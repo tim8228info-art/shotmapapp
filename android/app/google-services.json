@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "123107533000",
+    "project_id": "shotmap-app",
+    "storage_bucket": "shotmap-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:123107533000:android:b1ff82cc555c875bba85fd",
+        "android_client_info": {
+          "package_name": "com.shotmap.pins"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD3ivJIWDQkwPHi6rSq9TN-qO3dzWew3iA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

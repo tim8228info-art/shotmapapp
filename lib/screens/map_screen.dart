@@ -361,9 +361,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         children: [
           _buildPinTypeChip(null, '📍 両方', AppColors.primary),
           const SizedBox(width: 8),
-          _buildPinTypeChip(PinType.sightseeing, '🔴 風景', const Color(0xFFE53935)),
+          _buildPinTypeChip(PinType.sightseeing, '⛰️ 風景', const Color(0xFFE53935)),
           const SizedBox(width: 8),
-          _buildPinTypeChip(PinType.gourmet, '🔵 グルメ', const Color(0xFF1565C0)),
+          _buildPinTypeChip(PinType.gourmet, '🍴 グルメ', const Color(0xFF1565C0)),
         ],
       ),
     );

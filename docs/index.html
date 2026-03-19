@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shot Map - 写真スポット共有マップ</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+      background: #f9f9f9;
+      color: #333;
+    }
+    header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      color: white;
+      padding: 80px 20px;
+      text-align: center;
+    }
+    header h1 { font-size: 48px; font-weight: 800; letter-spacing: 0.05em; }
+    header .subtitle {
+      margin-top: 16px;
+      font-size: 18px;
+      color: #aaa;
+      line-height: 1.6;
+    }
+    header .tagline {
+      margin-top: 24px;
+      font-size: 22px;
+      color: #fff;
+      font-weight: 600;
+    }
+    .features {
+      max-width: 900px;
+      margin: 60px auto;
+      padding: 0 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 24px;
+    }
+    .feature-card {
+      background: white;
+      border-radius: 16px;
+      padding: 32px 24px;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    .feature-card .icon { font-size: 48px; margin-bottom: 16px; }
+    .feature-card h3 { font-size: 20px; color: #1a1a2e; margin-bottom: 12px; }
+    .feature-card p { font-size: 15px; color: #666; line-height: 1.6; }
+    .links {
+      text-align: center;
+      padding: 40px 20px 80px;
+    }
+    .links h2 { font-size: 22px; color: #1a1a2e; margin-bottom: 24px; }
+    .links a {
+      display: inline-block;
+      margin: 8px;
+      padding: 14px 32px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .btn-privacy { background: #e53935; color: white; }
+    .btn-terms { background: #1565C0; color: white; }
+    footer {
+      background: #1a1a2e;
+      color: #aaa;
+      text-align: center;
+      padding: 24px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📍 Shot Map</h1>
+  <p class="tagline">あなたの発見が、誰かの最高の旅になる。</p>
+  <p class="subtitle">
+    風景スポット⛰️とグルメスポット🍴を地図に刻もう。<br>
+    日本全国のお気に入りスポットをみんなでシェアする<br>
+    写真スポット共有マップアプリ
+  </p>
+</header>
+
+<div class="features">
+  <div class="feature-card">
+    <div class="icon">⛰️</div>
+    <h3>風景スポット投稿</h3>
+    <p>絶景・夕日・桜・紅葉など感動した景色を赤ピンで地図に残そう。</p>
+  </div>
+  <div class="feature-card">
+    <div class="icon">🍴</div>
+    <h3>グルメスポット投稿</h3>
+    <p>地元の名店・隠れた名物・話題のカフェを青ピンで共有しよう。</p>
+  </div>
+  <div class="feature-card">
+    <div class="icon">🗺️</div>
+    <h3>Google Mapsで発見</h3>
+    <p>日本全国の投稿スポットをマップで確認。旅行前の下調べに最適。</p>
+  </div>
+</div>
+
+<div class="links">
+  <h2>法的情報</h2>
+  <a href="./privacy.html" class="btn-privacy">🔒 プライバシーポリシー</a>
+  <a href="./terms.html" class="btn-terms">📄 利用規約</a>
+</div>
+
+<footer>
+  <p>© 2025 Nadya Kanazawa / Shot Map</p>
+</footer>
+
+</body>
+</html>
