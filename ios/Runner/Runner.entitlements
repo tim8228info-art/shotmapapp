@@ -4,7 +4,7 @@
 <dict>
 	<key>com.apple.developer.in-app-payments</key>
 	<array>
-		<string>com.shotmap.pins.premium.monthly</string>
+		<string>com.shotmap.pins.monthly</string>
 	</array>
 </dict>
 </plist>

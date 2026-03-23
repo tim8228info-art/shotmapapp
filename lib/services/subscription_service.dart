@@ -1,10 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
+import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
+import 'package:in_app_purchase_storekit/store_kit_wrappers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SubscriptionService extends ChangeNotifier {
-  static const String _productId = 'com.shotmap.pins.premium.monthly';
+  // iOS・Android 共通の製品ID
+  static const String _productId = 'com.shotmap.pins.monthly';
   static const String _prefKey = 'is_subscribed';
 
   final InAppPurchase _iap = InAppPurchase.instance;
@@ -36,6 +41,13 @@ class SubscriptionService extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return;
+    }
+
+    // iOS: プロモーションオファーのデリゲートを設定
+    if (Platform.isIOS) {
+      final iosPlatformAddition = _iap
+          .getPlatformAddition<InAppPurchaseStoreKitPlatformAddition>();
+      await iosPlatformAddition.setDelegate(_ShotMapPaymentQueueDelegate());
     }
 
     _isAvailable = await _iap.isAvailable();
@@ -114,7 +126,7 @@ class SubscriptionService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// サブスクリプション購入を開始
+  /// サブスクリプション購入を開始（iOS/Android 両対応）
   Future<bool> subscribe() async {
     if (_product == null) {
       _errorMessage = '商品情報を読み込めませんでした。しばらく待ってから再試行してください。';
@@ -126,7 +138,20 @@ class SubscriptionService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final purchaseParam = PurchaseParam(productDetails: _product!);
+      late PurchaseParam purchaseParam;
+
+      if (Platform.isAndroid) {
+        // Android: サブスクリプション用パラメータ
+        purchaseParam = GooglePlayPurchaseParam(
+          productDetails: _product!,
+          changeSubscriptionParam: null,
+        );
+      } else {
+        // iOS: 通常パラメータ
+        purchaseParam = PurchaseParam(productDetails: _product!);
+      }
+
+      // サブスクリプションは buyNonConsumable を使用
       return await _iap.buyNonConsumable(purchaseParam: purchaseParam);
     } catch (e) {
       _errorMessage = '購入処理中にエラーが発生しました: $e';
@@ -152,7 +177,27 @@ class SubscriptionService extends ChangeNotifier {
 
   @override
   void dispose() {
+    // iOS: デリゲートを解放
+    if (!kIsWeb && Platform.isIOS) {
+      final iosPlatformAddition = _iap
+          .getPlatformAddition<InAppPurchaseStoreKitPlatformAddition>();
+      iosPlatformAddition.setDelegate(null);
+    }
     _subscription?.cancel();
     super.dispose();
   }
+}
+
+/// iOS StoreKit デリゲート（プロモーションオファー対応）
+class _ShotMapPaymentQueueDelegate implements SKPaymentQueueDelegateWrapper {
+  @override
+  bool shouldContinueTransaction(
+    SKPaymentTransactionWrapper transaction,
+    SKStorefrontWrapper storefront,
+  ) {
+    return true;
+  }
+
+  @override
+  bool shouldShowPriceConsent() => false;
 }
