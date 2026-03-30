@@ -48,7 +48,7 @@ class AppleDisclaimerSection extends StatelessWidget {
               '期間', '1ヶ月（自動更新）'),
           const SizedBox(height: 6),
           _infoRow(Icons.payments_outlined, const Color(0xFF81C784),
-              '価格', '¥500 / 月（税込）'),
+              '価格', '500円 / 月（税込）'),
 
           const SizedBox(height: 14),
           const Divider(color: Color(0x1AFFFFFF), height: 1),
@@ -234,7 +234,7 @@ class AndroidDisclaimerSection extends StatelessWidget {
               '期間', '1ヶ月（自動更新）'),
           const SizedBox(height: 6),
           _infoRow(Icons.payments_outlined, const Color(0xFF81C784),
-              '価格', '¥500 / 月（税込）'),
+              '価格', '500円 / 月（税込）'),
 
           const SizedBox(height: 14),
           const Divider(color: Color(0x1AFFFFFF), height: 1),
@@ -244,7 +244,7 @@ class AndroidDisclaimerSection extends StatelessWidget {
           _sectionTitle('お支払い・キャンセルについて'),
           const SizedBox(height: 8),
           _bulletText(
-            'Google Play アカウントに月額 ¥500（税込）が請求されます。',
+            'Google Play アカウントに月額 500円（税込）が請求されます。',
           ),
           const SizedBox(height: 5),
           _bulletText(

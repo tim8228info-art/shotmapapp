@@ -169,7 +169,7 @@ class _PaywallScreenState extends State<PaywallScreen>
 
                     // ── ③ 月額プランカード（価格は常に円建てで固定表示）
                     const PlanCard(
-                      storePrice: '¥500',
+                      storePrice: '500円',
                       isSelected: true,
                     ),
 
@@ -230,7 +230,7 @@ class _PaywallScreenState extends State<PaywallScreen>
   String _buildButtonLabel(SubscriptionService sub) {
     if (sub.isLoading) return '読み込み中...';
     // 価格は常に日本円固定（ストアのロケールに左右されない）
-    const price = '¥500';
+    const price = '500円';
     if (_isIOS)     return '$price / 月 で始める';
     if (_isAndroid) return 'Google Play で $price / 月 を購入';
     return '$price / 月 で始める';
@@ -275,7 +275,7 @@ class _PaywallScreenState extends State<PaywallScreen>
 
         // サブタイトル
         const Text(
-          'すべての機能を月額¥500でご利用いただけます',
+          'すべての機能を月額500円でご利用いただけます',
           style: TextStyle(
             color: Color(0xFF8BAFCD),
             fontSize: 15,

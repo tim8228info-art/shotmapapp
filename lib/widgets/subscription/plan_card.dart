@@ -9,7 +9,7 @@
 import 'package:flutter/material.dart';
 
 class PlanCard extends StatelessWidget {
-  /// ストアから取得した価格文字列（例: "¥500"）。nullの場合フォールバック表示
+  /// ストアから取得した価格文字列。nullの場合フォールバック表示
   final String? storePrice;
   final bool isSelected;
 
@@ -21,7 +21,7 @@ class PlanCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final priceText = storePrice ?? '¥500';
+    final priceText = storePrice ?? '500円';
 
     return Container(
       decoration: BoxDecoration(

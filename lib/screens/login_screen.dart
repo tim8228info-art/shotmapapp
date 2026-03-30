@@ -4,9 +4,11 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../theme/app_theme.dart';
 import '../main_shell.dart';
+import '../models/user_profile_provider.dart';
 import '../services/subscription_service.dart';
 import 'paywall_screen.dart';
 import 'terms_screen.dart';
@@ -71,6 +73,19 @@ class _LoginScreenState extends State<LoginScreen>
     return digest.toString();
   }
 
+  /// ログイン状態をSharedPreferencesに保存
+  Future<void> _saveLoginState({
+    required String provider,   // 'apple' / 'line' / 'google'
+    required String displayName,
+    String? email,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_logged_in', true);
+    await prefs.setString('login_provider', provider);
+    await prefs.setString('display_name', displayName);
+    if (email != null) await prefs.setString('user_email', email);
+  }
+
   /// Sign in with Apple 処理
   Future<void> _signInWithApple(BuildContext context) async {
     setState(() => _isAppleSignInLoading = true);
@@ -80,7 +95,6 @@ class _LoginScreenState extends State<LoginScreen>
 
       final credential = await SignInWithApple.getAppleIDCredential(
         scopes: [
-          // 名前・メールアドレスのみ収集（ガイドライン4.8準拠）
           AppleIDAuthorizationScopes.email,
           AppleIDAuthorizationScopes.fullName,
         ],
@@ -89,23 +103,44 @@ class _LoginScreenState extends State<LoginScreen>
 
       if (!context.mounted) return;
 
-      // Apple提供の情報（プライベートメールも自動対応）
-      final email = credential.email; // nullの場合はプライベートリレーメール
+      // Apple提供の情報
+      final email = credential.email;
       final givenName = credential.givenName ?? '';
       final familyName = credential.familyName ?? '';
       final fullName = '$familyName$givenName'.trim();
       final displayName = fullName.isNotEmpty ? fullName : 'Appleユーザー';
 
+      // ログイン状態を永続化
+      await _saveLoginState(
+        provider: 'apple',
+        displayName: displayName,
+        email: email,
+      );
+
+      // UserProfileProviderにユーザー名を反映
+      if (context.mounted) {
+        final profileProvider = context.read<UserProfileProvider>();
+        profileProvider.updateProfile(
+          name: displayName,
+          bio: profileProvider.bio,
+          customId: profileProvider.customId,
+          instagramUrl: profileProvider.instagramUrl,
+          youtubeUrl: profileProvider.youtubeUrl,
+          xUrl: profileProvider.xUrl,
+          tiktokUrl: profileProvider.tiktokUrl,
+        );
+      }
+
       if (kDebugMode) {
         debugPrint('Apple Sign In 成功: $displayName / $email');
       }
 
+      if (!context.mounted) return;
       // ログイン後の画面遷移
       await _navigateAfterLogin(context);
     } on SignInWithAppleAuthorizationException catch (e) {
       if (!context.mounted) return;
       if (e.code == AuthorizationErrorCode.canceled) {
-        // ユーザーがキャンセル → 何もしない
         return;
       }
       _showError(context, 'Sign in with Apple に失敗しました。もう一度お試しください。');
@@ -150,7 +185,13 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
-  void _onLogin(BuildContext context) async {
+  /// LINE / Google ログイン（スタブ：ログイン状態を保存して遷移）
+  Future<void> _onSocialLogin(BuildContext context, String provider) async {
+    await _saveLoginState(
+      provider: provider,
+      displayName: provider == 'line' ? 'LINEユーザー' : 'Googleユーザー',
+    );
+    if (!context.mounted) return;
     await _navigateAfterLogin(context);
   }
 
@@ -335,7 +376,7 @@ class _LoginScreenState extends State<LoginScreen>
             context: context,
             label: 'LINEでログイン',
             color: const Color(0xFF06C755),
-            onTap: () => _onLogin(context),
+            onTap: () => _onSocialLogin(context, 'line'),
           ),
 
           const SizedBox(height: 12),
@@ -347,7 +388,7 @@ class _LoginScreenState extends State<LoginScreen>
             color: Colors.white,
             textColor: AppColors.textPrimary,
             hasBorder: true,
-            onTap: () => _onLogin(context),
+            onTap: () => _onSocialLogin(context, 'google'),
           ),
 
           const SizedBox(height: 20),
