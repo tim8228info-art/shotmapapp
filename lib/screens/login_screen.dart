@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'dart:math';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -57,22 +54,6 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
-  /// ランダムなnonce文字列を生成（Sign in with Apple セキュリティ用）
-  String _generateNonce([int length = 32]) {
-    const charset =
-        '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
-    final random = Random.secure();
-    return List.generate(length, (_) => charset[random.nextInt(charset.length)])
-        .join();
-  }
-
-  /// SHA256ハッシュ
-  String _sha256ofString(String input) {
-    final bytes = utf8.encode(input);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
-  }
-
   /// ログイン状態をSharedPreferencesに保存
   Future<void> _saveLoginState({
     required String provider,   // 'apple' / 'line' / 'google'
@@ -90,15 +71,13 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _signInWithApple(BuildContext context) async {
     setState(() => _isAppleSignInLoading = true);
     try {
-      final rawNonce = _generateNonce();
-      final nonce = _sha256ofString(rawNonce);
-
+      // Firebase Auth を使用しないため nonce は不要
+      // nonce を渡すと Firebase なしの環境ではエラーになる場合がある
       final credential = await SignInWithApple.getAppleIDCredential(
         scopes: [
           AppleIDAuthorizationScopes.email,
           AppleIDAuthorizationScopes.fullName,
         ],
-        nonce: nonce,
       );
 
       if (!context.mounted) return;
