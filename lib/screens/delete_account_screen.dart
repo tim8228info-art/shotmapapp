@@ -93,133 +93,131 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
   /// Step2: 最終確認（「DELETE」入力）
   void _showFinalConfirm() {
+    // controllerをbuilder外で一度だけ生成し、モーダルを閉じたときにdisposeする
+    final modalController = TextEditingController();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.6),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) {
-          final controller = TextEditingController();
-          bool matches = false;
-          controller.addListener(() {
-            setModalState(() {
-              matches = controller.text.trim() == _confirmWord;
-            });
-          });
-
-          return Container(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom,
-            ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(28),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ハンドルバー
-                  Center(
-                    child: Container(
-                      width: 40, height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // タイトル
-                  Row(
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 40, height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.delete_forever, color: Colors.red, size: 22),
-                      ),
-                      const SizedBox(width: 12),
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('最終確認',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                          Text('この操作は取り消せません',
-                              style: TextStyle(fontSize: 12, color: Colors.red)),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // 入力指示
-                  RichText(
-                    text: TextSpan(
-                      style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.6),
-                      children: [
-                        const TextSpan(text: '削除を確認するには、以下のボックスに '),
-                        TextSpan(
-                          text: _confirmWord,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: Colors.red,
-                            fontFamily: 'monospace',
+                      // ハンドルバー
+                      Center(
+                        child: Container(
+                          width: 40, height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(2),
                           ),
                         ),
-                        const TextSpan(text: ' と入力してください。'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+                      ),
+                      const SizedBox(height: 20),
 
-                  // 入力フィールド
-                  TextField(
-                    controller: controller,
-                    autofocus: true,
-                    textCapitalization: TextCapitalization.characters,
-                    decoration: InputDecoration(
-                      hintText: _confirmWord,
-                      hintStyle: TextStyle(color: Colors.grey.shade400, fontFamily: 'monospace'),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.red, width: 1.5),
+                      // タイトル
+                      Row(
+                        children: [
+                          Container(
+                            width: 40, height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.red.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.delete_forever, color: Colors.red, size: 22),
+                          ),
+                          const SizedBox(width: 12),
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('最終確認',
+                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                              Text('この操作は取り消せません',
+                                  style: TextStyle(fontSize: 12, color: Colors.red)),
+                            ],
+                          ),
+                        ],
                       ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.red, width: 2),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      filled: true,
-                      fillColor: Colors.red.withValues(alpha: 0.03),
-                    ),
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                  // 削除ボタン
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: StatefulBuilder(
-                      builder: (_, setBtn) {
-                        return ElevatedButton(
-                          onPressed: matches
+                      // 入力指示
+                      RichText(
+                        text: TextSpan(
+                          style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.6),
+                          children: [
+                            const TextSpan(text: '削除を確認するには、以下のボックスに '),
+                            TextSpan(
+                              text: _confirmWord,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: Colors.red,
+                              ),
+                            ),
+                            const TextSpan(text: ' と入力してください。'),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 入力フィールド（onChangedで状態更新）
+                      TextField(
+                        controller: modalController,
+                        autofocus: true,
+                        textCapitalization: TextCapitalization.characters,
+                        onChanged: (value) {
+                          // onChangedでsetModalStateを呼び、ボタンの有効/無効を更新
+                          setModalState(() {});
+                        },
+                        decoration: InputDecoration(
+                          hintText: _confirmWord,
+                          hintStyle: TextStyle(color: Colors.grey.shade400),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Colors.red, width: 1.5),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Colors.red, width: 2),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          filled: true,
+                          fillColor: Colors.red.withValues(alpha: 0.03),
+                        ),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // 削除ボタン（modalController.textで直接判定）
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          onPressed: modalController.text.trim() == _confirmWord
                               ? () {
+                                  modalController.dispose();
                                   Navigator.pop(ctx);
                                   _executeDelete();
                                 }
@@ -231,39 +229,42 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                             disabledForegroundColor: Colors.grey.shade400,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14)),
-                            elevation: matches ? 3 : 0,
+                            elevation: modalController.text.trim() == _confirmWord ? 3 : 0,
                           ),
                           child: const Text(
                             'アカウントを完全に削除する',
                             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                           ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // キャンセルボタン
-                  SizedBox(
-                    width: double.infinity,
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: Text(
-                        'キャンセル',
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 12),
+
+                      // キャンセルボタン
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton(
+                          onPressed: () {
+                            modalController.dispose();
+                            Navigator.pop(ctx);
+                          },
+                          child: Text(
+                            'キャンセル',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                ],
+                ),
               ),
-            ),
-          );
-        },
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
