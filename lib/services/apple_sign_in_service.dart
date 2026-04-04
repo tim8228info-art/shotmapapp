@@ -136,7 +136,7 @@ class AppleSignInService {
       if (kDebugMode) {
         debugPrint('[AppleSignIn] Success: user=$userIdentifier');
         debugPrint('[AppleSignIn] hasIdentityToken=${identityToken != null}');
-        debugPrint('[AppleSignIn] hasAuthCode=${authorizationCode != null}');
+        debugPrint('[AppleSignIn] hasAuthCode=${authorizationCode.isNotEmpty}');
       }
 
       return AppleSignInResult(

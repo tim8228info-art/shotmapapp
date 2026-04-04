@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-// ignore_for_file: unused_field
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'user_profile_screen.dart';
 import '../theme/app_theme.dart';
 import '../models/data_models.dart';
@@ -20,8 +18,6 @@ class TrendScreen extends StatefulWidget {
 class _TrendScreenState extends State<TrendScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  int _selectedTab = 0;
-  final List<String> _tabs = ['スポット', 'ユーザー検索'];
 
   // ─── ID 検索 ───
   final TextEditingController _searchCtrl = TextEditingController();
@@ -31,41 +27,12 @@ class _TrendScreenState extends State<TrendScreen>
   // ─── スポットタブ：風景/グルメ切り替え ───
   int _spotTypeIndex = 0; // 0=風景 1=グルメ
 
-  // ─── おすすめタブ：カテゴリ ───
-  int _recCategoryIndex = 0; // 0=観光地 1=カフェ 2=ホテル
-
-  // ─── おすすめタブ：都道府県選択 ───
-  String? _selectedPrefecture; // null = すべて
-
-  static const List<String> _prefectures = [
-    '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
-    '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
-    '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県',
-    '岐阜県', '静岡県', '愛知県', '三重県',
-    '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県',
-    '鳥取県', '島根県', '岡山県', '広島県', '山口県',
-    '徳島県', '香川県', '愛媛県', '高知県',
-    '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
-  ];
-
-  // ─── 地方グループ ───
-  static const Map<String, List<String>> _regionMap = {
-    '北海道': ['北海道'],
-    '東北': ['青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県'],
-    '関東': ['茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県'],
-    '中部': ['新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県', '岐阜県', '静岡県', '愛知県'],
-    '近畿': ['三重県', '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県'],
-    '中国': ['鳥取県', '島根県', '岡山県', '広島県', '山口県'],
-    '四国': ['徳島県', '香川県', '愛媛県', '高知県'],
-    '九州・沖縄': ['福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県'],
-  };
-
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
-      setState(() => _selectedTab = _tabController.index);
+      setState(() {});
     });
   }
 
@@ -74,27 +41,6 @@ class _TrendScreenState extends State<TrendScreen>
     _tabController.dispose();
     _searchCtrl.dispose();
     super.dispose();
-  }
-
-  // ─── 外部URL を開く ───
-  Future<void> _launchUrl(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('URLを開けませんでした',
-              style: TextStyle(fontSize: 13)),
-          backgroundColor: AppColors.primaryDark,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(16),
-          duration: const Duration(seconds: 2),
-        ));
-      }
-    }
   }
 
   // ─── ID 検索ロジック ───
@@ -111,17 +57,6 @@ class _TrendScreenState extends State<TrendScreen>
         }).toList();
       }
     });
-  }
-
-  // ─── 現在のカテゴリリストを返す ───
-  List<RecommendItem> get _currentList {
-    final all = _recCategoryIndex == 0
-        ? SampleData.sightseeingList
-        : _recCategoryIndex == 1
-            ? SampleData.gourmetList
-            : SampleData.hotelList;
-    if (_selectedPrefecture == null) return all;
-    return all.where((item) => item.prefecture == _selectedPrefecture).toList();
   }
 
   @override
@@ -335,7 +270,7 @@ class _TrendScreenState extends State<TrendScreen>
             ],
           ),
         ),
-        ...spots.map((spot) => _buildTrendCard(spot, sectionColor)).toList(),
+        ...spots.map((spot) => _buildTrendCard(spot, sectionColor)),
         const SizedBox(height: 32),
       ],
     );

@@ -71,7 +71,7 @@ class PaywallScreen extends StatelessWidget {
                 // CTA button
                 _buildCtaButton(context),
                 const SizedBox(height: 16),
-                // Note
+                // Apple-required subscription disclaimer (Guideline 3.1.2)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
@@ -80,9 +80,13 @@ class PaywallScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Text(
-                    'サブスクリプションの購入はiOS / Android アプリからご利用ください。',
-                    style: TextStyle(fontSize: 12, color: _textGray, height: 1.5),
-                    textAlign: TextAlign.center,
+                    'サブスクリプションは確認後、お客様のApple IDアカウントに請求されます。'
+                    '現在の期間が終了する24時間以上前にキャンセルしない限り、'
+                    'サブスクリプションは自動的に更新されます。'
+                    '更新料金は現在の期間終了前の24時間以内に請求されます。'
+                    '購入後、設定アプリからサブスクリプションの管理・キャンセルが可能です。',
+                    style: TextStyle(fontSize: 11, color: _textGray, height: 1.6),
+                    textAlign: TextAlign.left,
                   ),
                 ),
                 const SizedBox(height: 12),

@@ -132,11 +132,12 @@ class _LoginScreenState extends State<LoginScreen>
       final isAvailable = await AppleSignInService.isAvailable();
 
       if (!isAvailable) {
+        if (!mounted) return;
         // Fallback for devices where Apple Sign In is not available
         if (kIsWeb) {
           // Web demo mode
           await _completeSocialLogin(
-            context: context,
+            context: this.context,
             provider: 'apple',
             displayName: 'Appleユーザー',
           );
@@ -153,7 +154,7 @@ class _LoginScreenState extends State<LoginScreen>
 
       if (result.success) {
         await _completeSocialLogin(
-          context: context,
+          context: this.context,
           provider: 'apple',
           displayName: result.displayName,
           email: result.email,
@@ -240,32 +241,6 @@ class _LoginScreenState extends State<LoginScreen>
         ],
       ),
     );
-  }
-
-  // ─── LINE / Google login (stub with loading state) ───
-  Future<void> _onSocialLogin(BuildContext context, String provider) async {
-    if (_isLoading) return;
-
-    setState(() {
-      _isLoading = true;
-      _loadingProvider = provider;
-    });
-
-    try {
-      final displayName = provider == 'line' ? 'LINEユーザー' : 'Googleユーザー';
-      await _completeSocialLogin(
-        context: context,
-        provider: provider,
-        displayName: displayName,
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _loadingProvider = null;
-        });
-      }
-    }
   }
 
   // ─── Common login completion ───
@@ -485,25 +460,19 @@ class _LoginScreenState extends State<LoginScreen>
           ),
           const SizedBox(height: 12),
 
-          // LINE
-          _buildSocialButton(
-            context: context,
+          // LINE (Coming Soon)
+          _buildComingSoonButton(
             label: 'LINEでログイン',
             color: const Color(0xFF06C755),
-            provider: 'line',
-            onTap: () => _onSocialLogin(context, 'line'),
           ),
           const SizedBox(height: 12),
 
-          // Google
-          _buildSocialButton(
-            context: context,
+          // Google (Coming Soon)
+          _buildComingSoonButton(
             label: 'Googleでログイン',
             color: Colors.white,
             textColor: AppColors.textPrimary,
             hasBorder: true,
-            provider: 'google',
-            onTap: () => _onSocialLogin(context, 'google'),
           ),
 
           const SizedBox(height: 20),
@@ -560,7 +529,7 @@ class _LoginScreenState extends State<LoginScreen>
     bool hasBorder = false,
     IconData? icon,
   }) {
-    final isCurrentLoading = _loadingProvider == provider;
+    final isCurrentLoading = _isLoading && _loadingProvider == provider;
     final isDisabled = _isLoading && !isCurrentLoading;
 
     return GestureDetector(
@@ -612,6 +581,58 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     ],
                   ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Disabled "Coming Soon" button for social logins not yet implemented.
+  /// Apple guideline: stub login must not pretend to work.
+  Widget _buildComingSoonButton({
+    required String label,
+    required Color color,
+    Color textColor = Colors.white,
+    bool hasBorder = false,
+  }) {
+    return Opacity(
+      opacity: 0.45,
+      child: Container(
+        height: 52,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(14),
+          border: hasBorder ? Border.all(color: AppColors.border, width: 1.5) : null,
+        ),
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: textColor,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: textColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Coming Soon',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: textColor,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

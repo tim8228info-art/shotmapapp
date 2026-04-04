@@ -9,8 +9,8 @@
 // 使い方:
 //   showReportBlockSheet(context, authorName: 'Yuki', postId: 'pin_001');
 // ────────────────────────────────────────────────────────────────────────────
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../services/ugc_moderation_service.dart';
 
 // ── 通報カテゴリ ─────────────────────────────────────────────────────────────
 enum ReportReason {
@@ -71,31 +71,25 @@ class _ReportBlockSheetState extends State<_ReportBlockSheet> {
   ReportReason? _selectedReason;
   bool _isSubmitting = false;
 
-  // ── 通報送信（実装はバックエンド連携時に置き換え） ───────────────────────
+  // ── 通報送信（Hiveローカル永続化 + 将来的にサーバー同期） ─────────
   Future<void> _submitReport() async {
     if (_selectedReason == null) return;
     setState(() => _isSubmitting = true);
 
-    // TODO: バックエンドへの通報送信 API を実装
-    if (kDebugMode) {
-      debugPrint(
-        '[Report] postId=${widget.postId}, reason=${_selectedReason!.name}',
-      );
-    }
-    await Future.delayed(const Duration(milliseconds: 600));
+    await UgcModerationService.submitReport(
+      postId: widget.postId,
+      reason: _selectedReason!.name,
+      authorId: widget.authorId,
+      authorName: widget.authorName,
+    );
 
     if (mounted) setState(() => _step = 2);
   }
 
-  // ── ブロック実行（実装はバックエンド連携時に置き換え） ──────────────────
+  // ── ブロック実行（Hiveローカル永続化 + 将来的にサーバー同期） ─────────
   Future<void> _blockUser() async {
-    if (kDebugMode) {
-      debugPrint(
-        '[Block] authorId=${widget.authorId ?? widget.authorName}',
-      );
-    }
-    // TODO: ブロック API を実装（SharedPreferences or Firestore）
-    await Future.delayed(const Duration(milliseconds: 400));
+    final identifier = widget.authorId ?? widget.authorName;
+    await UgcModerationService.blockUser(identifier);
     if (mounted) {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(

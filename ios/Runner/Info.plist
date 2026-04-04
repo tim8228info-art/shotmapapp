@@ -45,8 +45,6 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<key>GoogleMapsAPIKey</key>
-	<string>AIzaSyDkkaK-buEVazhTK40x2XVhGdXzC-AYjLY</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>現在地周辺の絶景・グルメスポットをマップ上に表示し、スポットへのルート案内や投稿時の位置情報登録に使用します。位置情報はアプリ使用中のみ取得します。</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

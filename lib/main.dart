@@ -11,6 +11,8 @@ import 'screens/post_screen.dart';
 import 'main_shell.dart';
 import 'models/user_profile_provider.dart';
 import 'services/subscription_service.dart';
+import 'services/ugc_moderation_service.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 // スクリーンショット用URLルーティング（Web開発用）
 Widget _resolveWebScreen() {
@@ -28,6 +30,11 @@ Widget _resolveWebScreen() {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Hive (local DB for UGC moderation, settings, etc.)
+  await Hive.initFlutter();
+  await UgcModerationService.init();
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,

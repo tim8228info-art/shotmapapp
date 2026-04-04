@@ -1,0 +1,86 @@
+================================================================================
+Shot Map - App Store Connect Review Notes & Privacy Nutrition Labels
+================================================================================
+Version: 1.0.3
+
+--- App Review Information (App Store Connect > App Information > Review Notes) ---
+
+Review Notes (paste into App Store Connect):
+"
+- LINE and Google login are displayed as "Coming Soon" and are intentionally
+  non-functional in this version. Apple Sign-In is the only active login method.
+  LINE and Google OAuth will be activated in a future update.
+- The app uses a monthly auto-renewable subscription (500 JPY/month).
+  A "Restore Purchases" button is available on the paywall screen.
+- UGC report and block features are available via the 3-dot menu on any post.
+  Reports are stored locally and will be synced to our moderation backend
+  in a future server update.
+- Account deletion is available at: Profile > Account Deletion.
+  All local data (pins, saved spots, profile, settings) is permanently removed.
+- The app does NOT use Google Maps. It uses OpenStreetMap via flutter_map (OSM).
+  No Google Maps API key is present in the build.
+"
+
+--- Privacy Nutrition Labels (App Store Connect > App Privacy) ---
+
+Configure these in App Store Connect exactly:
+
+1. Location (Approximate/Precise)
+   - Usage: App Functionality
+   - Linked to User: No
+   - Tracking: No
+   - Purpose: Display nearby spots on map, route guidance, pin location for posts
+
+2. Photos or Videos
+   - Usage: App Functionality
+   - Linked to User: Yes (photos attached to user-generated pins)
+   - Tracking: No
+   - Purpose: Users attach photos to spot pins they create
+
+3. User ID (Apple User Identifier)
+   - Usage: App Functionality
+   - Linked to User: Yes
+   - Tracking: No
+   - Purpose: Authentication via Sign in with Apple
+
+4. Email Address
+   - Usage: App Functionality
+   - Linked to User: Yes
+   - Tracking: No
+   - Purpose: Provided optionally via Sign in with Apple for account recovery
+
+5. Name (Display Name)
+   - Usage: App Functionality
+   - Linked to User: Yes
+   - Tracking: No
+   - Purpose: Shown on user profile, provided via Sign in with Apple
+
+6. Purchases
+   - Usage: App Functionality
+   - Linked to User: Yes
+   - Tracking: No
+   - Purpose: In-app subscription status tracking
+
+--- Privacy Policy URL ---
+Ensure you set the Privacy Policy URL in App Store Connect:
+  App Store Connect > App Information > Privacy Policy URL
+
+--- Pre-Submission Checklist ---
+[x] Apple Sign-In works on iPhone and iPad
+[x] Avatar change works on iPhone (bottom sheet) and iPad (AlertDialog)
+[x] Subscription purchase, restore, and persistence all functional
+[x] Account deletion flow (double confirmation + data wipe)
+[x] Privacy purpose strings in Info.plist (Location, Camera, Photo Library)
+[x] HTTPS-only networking (App Transport Security)
+[x] Runner.entitlements and project.pbxproj CODE_SIGN_ENTITLEMENTS configured
+[x] iPad multitasking support (UIRequiresFullScreen = false)
+[x] UGC report & block with local Hive persistence
+[x] Apple-required subscription disclaimer on Paywall screen
+[x] LINE/Google login disabled with "Coming Soon" label
+[x] No exposed API keys in Info.plist
+[x] flutter analyze: 0 issues
+[ ] App Store Connect metadata (screenshots, titles, keywords)
+[ ] Privacy Policy URL set in App Store Connect
+[ ] Privacy Nutrition Labels configured per above
+[ ] TestFlight real-device testing on iPad Air and iPhone
+================================================================================
