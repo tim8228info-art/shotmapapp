@@ -1,6 +1,5 @@
 import Flutter
 import UIKit
-import GoogleMaps
 import StoreKit
 
 @main
@@ -9,9 +8,6 @@ import StoreKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Google Maps API
-    GMSServices.provideAPIKey("AIzaSyDkkaK-buEVazhTK40x2XVhGdXzC-AYjLY")
-
     // Register Flutter plugins (includes in_app_purchase, sign_in_with_apple, etc.)
     // This also sets up SKPaymentQueue observer via the IAP plugin.
     GeneratedPluginRegistrant.register(with: self)
