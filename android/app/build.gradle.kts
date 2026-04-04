@@ -57,6 +57,11 @@ android {
     }
 }
 
+dependencies {
+    // Force Play Billing Library 7.1.1 (Google Play requires >= 6.0.1)
+    implementation("com.android.billingclient:billing:7.1.1")
+}
+
 flutter {
     source = "../.."
 }

@@ -1,11 +1,11 @@
 {
-    "name": "flutter_app",
-    "short_name": "flutter_app",
+    "name": "Shot map",
+    "short_name": "Shot map",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Shot map - あなたのお気に入りが誰かの最高の景色になる",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

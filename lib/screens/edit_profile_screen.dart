@@ -1,5 +1,8 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 import '../theme/app_theme.dart';
 import '../models/user_profile_provider.dart';
 
@@ -357,6 +360,243 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  // ── アバター画像ピッカー ──
+  final ImagePicker _imagePicker = ImagePicker();
+  String? _localAvatarPath; // ローカルで選択した画像パス
+
+  /// Detect if device is iPad (for popover presentation).
+  bool get _isIPad {
+    if (kIsWeb) return false;
+    // Use MediaQuery shortestSide or check platform
+    final data = MediaQuery.of(context);
+    return data.size.shortestSide >= 600;
+  }
+
+  Future<void> _pickAvatarImage() async {
+    try {
+      ImageSource? source;
+
+      if (_isIPad) {
+        // iPad: Use AlertDialog instead of bottom sheet to avoid popover issues
+        source = await showDialog<ImageSource>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Text(
+              'アバター画像を選択',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Container(
+                    width: 44, height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryVeryLight,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.photo_library, color: AppColors.primary),
+                  ),
+                  title: const Text('写真ライブラリから選択',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('保存済みの写真から選択します',
+                      style: TextStyle(fontSize: 12)),
+                  onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: Container(
+                    width: 44, height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF0E6),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.camera_alt, color: Color(0xFFFF9800)),
+                  ),
+                  title: const Text('カメラで撮影',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('新しい写真を撮影します',
+                      style: TextStyle(fontSize: 12)),
+                  onTap: () => Navigator.pop(ctx, ImageSource.camera),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('キャンセル',
+                    style: TextStyle(color: AppColors.textSecondary)),
+              ),
+            ],
+          ),
+        );
+      } else {
+        // iPhone: Use bottom sheet (standard presentation)
+        source = await showModalBottomSheet<ImageSource>(
+          context: context,
+          backgroundColor: Colors.white,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (ctx) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 40, height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Text(
+                    'アバター画像を選択',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ListTile(
+                    leading: Container(
+                      width: 44, height: 44,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryVeryLight,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.photo_library, color: AppColors.primary),
+                    ),
+                    title: const Text('写真ライブラリから選択',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text('保存済みの写真から選択します',
+                        style: TextStyle(fontSize: 12)),
+                    onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+                  ),
+                  ListTile(
+                    leading: Container(
+                      width: 44, height: 44,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF0E6),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.camera_alt, color: Color(0xFFFF9800)),
+                    ),
+                    title: const Text('カメラで撮影',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text('新しい写真を撮影します',
+                        style: TextStyle(fontSize: 12)),
+                    onTap: () => Navigator.pop(ctx, ImageSource.camera),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+
+      if (source == null) return; // ユーザーがキャンセル
+
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+
+      if (pickedFile == null) return; // ユーザーがキャンセル
+
+      if (!mounted) return;
+
+      // ローカルパスを保存してUIを更新
+      setState(() {
+        _localAvatarPath = pickedFile.path;
+      });
+
+      // プロバイダーのアバターURLを更新（本番ではサーバーにアップロード後のURLを使用）
+      if (mounted) {
+        context.read<UserProfileProvider>().updateAvatar(pickedFile.path);
+        _showSnack('アバター画像を変更しました');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[EditProfile] Image picker error: $e');
+      }
+      if (mounted) {
+        // Permission denied or other errors
+        final errorStr = e.toString();
+        if (errorStr.contains('photo_access_denied') ||
+            errorStr.contains('camera_access_denied') ||
+            errorStr.contains('PHPhotoLibrary') ||
+            errorStr.contains('NSPhotoLibrary') ||
+            errorStr.contains('Permission')) {
+          _showPermissionDeniedDialog();
+        } else if (errorStr.contains('simulator') ||
+            errorStr.contains('Simulator')) {
+          // Simulator-only error - should never trigger on real devices
+          _showSnack('シミュレータではこの機能をご利用いただけません。実機でお試しください。', isError: true);
+        } else {
+          _showSnack('画像の選択に失敗しました。もう一度お試しください。', isError: true);
+        }
+      }
+    }
+  }
+
+  /// 権限拒否時のダイアログ表示
+  void _showPermissionDeniedDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.no_photography, color: AppColors.accent, size: 24),
+            const SizedBox(width: 8),
+            const Text('アクセス権限が必要です',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ],
+        ),
+        content: const Text(
+          '写真ライブラリまたはカメラへのアクセスが拒否されています。\n\n'
+          '「設定」アプリからShotmapの権限を許可してください。',
+          style: TextStyle(fontSize: 14, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('キャンセル',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              // iOS: 設定アプリを開く
+              // openAppSettings() は url_launcher で実装可能
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── アバターセクション ──
   Widget _buildAvatarSection() {
     return Center(
@@ -364,41 +604,41 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         children: [
           // アバター画像
           Consumer<UserProfileProvider>(
-            builder: (_, provider, __) => Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.primaryLight, width: 3),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primaryDark.withValues(alpha: 0.15),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
+            builder: (_, provider, __) {
+              final avatarUrl = provider.avatarUrl;
+              final isLocalFile = _localAvatarPath != null ||
+                  (!avatarUrl.startsWith('http') && avatarUrl.isNotEmpty);
+              final localPath = _localAvatarPath ?? avatarUrl;
+
+              return GestureDetector(
+                onTap: _pickAvatarImage,
+                child: Container(
+                  width: 96,
+                  height: 96,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.primaryLight, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primaryDark.withValues(alpha: 0.15),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: ClipOval(
-                child: Image.network(
-                  provider.avatarUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: AppColors.primaryLight,
-                    child: const Icon(Icons.person, color: Colors.white, size: 52),
+                  child: ClipOval(
+                    child: _buildAvatarImage(avatarUrl, isLocalFile, localPath),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
           // カメラアイコン（変更ボタン）
           Positioned(
             bottom: 0,
             right: 0,
             child: GestureDetector(
-              onTap: () {
-                // 実機では image_picker を使うが、プレビュー用にダミー表示
-                _showSnack('アバター変更は実機でご利用ください');
-              },
+              onTap: _pickAvatarImage,
               child: Container(
                 width: 32,
                 height: 32,
@@ -412,6 +652,42 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAvatarImage(String avatarUrl, bool isLocalFile, String localPath) {
+    if (kIsWeb) {
+      // Web: ネットワーク画像のみ対応
+      return Image.network(
+        avatarUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          color: AppColors.primaryLight,
+          child: const Icon(Icons.person, color: Colors.white, size: 52),
+        ),
+      );
+    }
+
+    if (isLocalFile && localPath.isNotEmpty) {
+      // Native: ローカルファイル画像
+      return Image.file(
+        File(localPath),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          color: AppColors.primaryLight,
+          child: const Icon(Icons.person, color: Colors.white, size: 52),
+        ),
+      );
+    }
+
+    // ネットワーク画像またはデフォルト
+    return Image.network(
+      avatarUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Container(
+        color: AppColors.primaryLight,
+        child: const Icon(Icons.person, color: Colors.white, size: 52),
       ),
     );
   }

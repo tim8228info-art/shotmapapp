@@ -2,7 +2,7 @@
     <!-- Google Play 課金権限 -->
     <uses-permission android:name="com.android.vending.BILLING" />
     <application
-        android:label="Shot Map"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -49,4 +49,6 @@
         </intent>
     </queries>
 </manifest>
+
+
 

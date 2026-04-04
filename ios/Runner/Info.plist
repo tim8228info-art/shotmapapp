@@ -57,5 +57,11 @@
 	<string>フォトライブラリから写真を選択してスポットのピンに添付・投稿するために使用します。選択した写真はShotMapのスポット情報として共有されます。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>マップ上のスポット写真をあなたのフォトライブラリに保存するために使用します。</string>
+	<key>UISupportsFullScreen</key>
+	<true/>
+	<key>UIRequiresFullScreen</key>
+	<false/>
+	<key>UISupportsDocumentBrowser</key>
+	<false/>
 </dict>
 </plist>

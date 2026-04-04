@@ -1,316 +1,266 @@
-// ────────────────────────────────────────────────────────────────────────────
-// SubscriptionService  v2.0
-//
-// iOS (StoreKit 経由 in_app_purchase) と
-// Android (Google Play Billing 経由 in_app_purchase) 両対応。
-//
-// ■ 購入フロー
-//   1. purchaseMonthlyPlan()      … UI から呼ぶ唯一のエントリポイント
-//   2. restorePurchases()         … iOS 必須の「購入を復元」ボタン用
-//   3. openAndroidSubscriptionManagement() … Android の解約案内
-//
-// ■ 状態管理
-//   isSubscribed / isLoading / errorMessage を ChangeNotifier で通知
-//   購読状態は SharedPreferences に永続化
-// ────────────────────────────────────────────────────────────────────────────
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
-import 'package:in_app_purchase_android/in_app_purchase_android.dart';
-import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
-import 'package:in_app_purchase_storekit/store_kit_wrappers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+/// Subscription service using in_app_purchase plugin.
+/// Uses Play Billing Library 7.x on Android (PBL >= 6.0.1).
+/// Falls back to stub on web for preview purposes.
+///
+/// Purchase state persistence strategy:
+/// 1. On successful purchase/restore → save to SharedPreferences immediately
+/// 2. On app startup → read cached state first, then verify with store
+/// 3. Purchase stream listener is registered at init (acts as transaction observer)
+/// 4. Completer used for restore to avoid fragile timing-based waits
 class SubscriptionService extends ChangeNotifier {
-  // ── 定数 ────────────────────────────────────────────────────────────────
-  static const String kProductId  = 'com.shotmap.pins.monthly';
-  static const String _kPackageId = 'com.shotmap.pins';
-  static const String _prefKey    = 'is_subscribed';
+  static const String _productId = 'com.shotmap.pins.monthly';
+  static const String _prefKey = 'is_subscribed';
+  // ignore: unused_field
+  static const String _prefKeyExpiry = 'subscription_expiry';
+  static const String _prefKeyLastVerified = 'subscription_last_verified';
 
-  // ── 内部状態 ─────────────────────────────────────────────────────────────
-  final InAppPurchase _iap = InAppPurchase.instance;
-  StreamSubscription<List<PurchaseDetails>>? _purchaseStream;
+  bool _isSubscribed = false;
+  bool _isLoading = false;
+  bool _isAvailable = false;
+  bool _initCompleted = false;
+  String? _errorMessage;
 
-  bool           _isSubscribed  = false;
-  bool           _isLoading     = true;
-  bool           _isAvailable   = false;
-  ProductDetails? _product;
-  String?        _errorMessage;
+  StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
 
-  // ── パブリックゲッター ────────────────────────────────────────────────────
-  bool            get isSubscribed  => _isSubscribed;
-  bool            get isLoading     => _isLoading;
-  bool            get isAvailable   => _isAvailable;
-  ProductDetails? get product       => _product;
-  String?         get errorMessage  => _errorMessage;
+  /// Completer that resolves when initial restore check finishes.
+  Completer<void>? _restoreCompleter;
 
-  // ────────────────────────────────────────────────────────────────────────
-  // コンストラクタ
-  // ────────────────────────────────────────────────────────────────────────
+  bool get isSubscribed => _isSubscribed;
+  bool get isLoading => _isLoading;
+  bool get isAvailable => _isAvailable;
+  bool get initCompleted => _initCompleted;
+  String? get errorMessage => _errorMessage;
+
   SubscriptionService() {
     _init();
   }
 
-  // ────────────────────────────────────────────────────────────────────────
-  // 初期化
-  // ────────────────────────────────────────────────────────────────────────
+  /// Wait for initialization to complete (use in splash/routing logic).
+  Future<void> waitForInit() async {
+    if (_initCompleted) return;
+    // Poll until init is done (max 5 seconds)
+    for (int i = 0; i < 50; i++) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (_initCompleted) return;
+    }
+  }
+
   Future<void> _init() async {
-    // ① ローカルに保存された購読状態を先に読み込む（画面のちらつきを防ぐ）
-    final prefs = await SharedPreferences.getInstance();
-    _isSubscribed = prefs.getBool(_prefKey) ?? false;
+    _isLoading = true;
     notifyListeners();
 
-    // ② Web は課金非対応
+    final prefs = await SharedPreferences.getInstance();
+
+    // Web: always subscribed for demo/preview
     if (kIsWeb) {
+      _isSubscribed = true;
+      _isAvailable = true;
       _isLoading = false;
+      _initCompleted = true;
+      await prefs.setBool(_prefKey, true);
       notifyListeners();
       return;
     }
 
-    // ③ iOS: StoreKit デリゲートを設定
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      try {
-        final addition =
-            _iap.getPlatformAddition<InAppPurchaseStoreKitPlatformAddition>();
-        await addition.setDelegate(_ShotMapPaymentQueueDelegate());
-      } catch (e) {
-        _debugLog('initStoreKit error: $e');
-      }
-    }
+    // STEP 1: Immediately restore cached subscription state
+    // This ensures premium features are available instantly on launch
+    _isSubscribed = prefs.getBool(_prefKey) ?? false;
 
-    // ④ 共通: ストアの利用可否を確認
-    _isAvailable = await _iap.isAvailable();
+    // STEP 2: Initialize IAP and register transaction observer
+    _isAvailable = await InAppPurchase.instance.isAvailable();
 
     if (_isAvailable) {
-      // ⑤ 購入イベントストリームを購読
-      _purchaseStream = _iap.purchaseStream.listen(
-        _onPurchaseUpdate,
-        onDone: () => _purchaseStream?.cancel(),
-        onError: (Object e) {
-          _errorMessage = e.toString();
-          notifyListeners();
+      // Register purchase stream listener EARLY (acts as SKPaymentQueue observer)
+      // This is critical: must be registered before any purchases/restores
+      _purchaseSubscription = InAppPurchase.instance.purchaseStream.listen(
+        _onPurchaseUpdated,
+        onDone: () => _purchaseSubscription?.cancel(),
+        onError: (error) {
+          if (kDebugMode) {
+            debugPrint('[SubscriptionService] purchase stream error: $error');
+          }
         },
       );
 
-      // ⑥ 製品情報をロード
-      await _loadProducts();
-
-      // ⑦ サイレント復元（起動時に自動で購買状態を同期）
-      await _silentRestore();
-    } else {
-      _debugLog('Store is not available');
+      // STEP 3: Silently verify subscription with store in background
+      await _silentRestore(prefs);
     }
 
     _isLoading = false;
+    _initCompleted = true;
     notifyListeners();
   }
 
-  // ────────────────────────────────────────────────────────────────────────
-  // ██ パブリック API ██
-  // ────────────────────────────────────────────────────────────────────────
+  Future<void> _silentRestore(SharedPreferences prefs) async {
+    try {
+      _restoreCompleter = Completer<void>();
 
-  /// 月額プランを購入する（iOS / Android 共通エントリポイント）
-  ///
-  /// UI の「購入」ボタンからこのメソッドだけを呼ぶ。
-  Future<void> purchaseMonthlyPlan() async {
-    _clearError();
-    _setLoading(true);
+      await InAppPurchase.instance.restorePurchases();
 
-    if (_product == null) {
-      _errorMessage = '商品情報を読み込めませんでした。しばらく待ってから再試行してください。';
-      _setLoading(false);
-      return;
+      // Wait for restore results with a timeout (not a blind delay)
+      await _restoreCompleter!.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('[SubscriptionService] silent restore timed out');
+          }
+        },
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[SubscriptionService] silent restore error: $e');
+      }
+    } finally {
+      _restoreCompleter = null;
     }
 
-    try {
-      if (defaultTargetPlatform == TargetPlatform.iOS) {
-        // ── iOS: StoreKit (in_app_purchase) ────────────────────────────
-        final param = PurchaseParam(productDetails: _product!);
-        await _iap.buyNonConsumable(purchaseParam: param);
-        // 結果は _onPurchaseUpdate() で処理
-      } else if (defaultTargetPlatform == TargetPlatform.android) {
-        // ── Android: Google Play Billing (in_app_purchase_android) ─────
-        final param = GooglePlayPurchaseParam(
-          productDetails: _product!,
-          changeSubscriptionParam: null,
+    // If store didn't find active subscription, keep cached state
+    // (subscription may have been purchased on another device)
+    if (kDebugMode) {
+      debugPrint('[SubscriptionService] after restore: isSubscribed=$_isSubscribed');
+    }
+  }
+
+  void _onPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) {
+    for (final purchase in purchaseDetailsList) {
+      if (kDebugMode) {
+        debugPrint(
+          '[SubscriptionService] purchase update: '
+          'productID=${purchase.productID}, '
+          'status=${purchase.status}',
         );
-        await _iap.buyNonConsumable(purchaseParam: param);
-        // 結果は _onPurchaseUpdate() で処理
-      } else {
-        _errorMessage = 'このプラットフォームでは購入できません。';
-        _setLoading(false);
-      }
-    } catch (e) {
-      _errorMessage = '購入処理中にエラーが発生しました。\n$e';
-      _setLoading(false);
-    }
-  }
-
-  /// 購入を復元する（iOS 審査必須）
-  ///
-  /// iOS の「購入を復元する」ボタンに紐付ける。
-  /// Android では使用しない（Google Play が自動で同期する）。
-  Future<void> restorePurchases() async {
-    _clearError();
-    _setLoading(true);
-    try {
-      await _iap.restorePurchases();
-      // 結果は _onPurchaseUpdate() で処理
-    } catch (e) {
-      _errorMessage = '購入の復元に失敗しました。\n$e';
-      _setLoading(false);
-    }
-  }
-
-  /// Android: Google Play の定期購入管理画面を開く
-  ///
-  /// Google Play ポリシー準拠 – キャンセル導線として提供。
-  Future<void> openAndroidSubscriptionManagement() async {
-    final uri = Uri.parse(
-      'https://play.google.com/store/account/subscriptions'
-      '?sku=$kProductId&package=$_kPackageId',
-    );
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  // ────────────────────────────────────────────────────────────────────────
-  // 内部ヘルパー
-  // ────────────────────────────────────────────────────────────────────────
-
-  Future<void> _loadProducts() async {
-    try {
-      final response = await _iap.queryProductDetails({kProductId});
-      if (response.error != null) {
-        _errorMessage = '商品情報の取得に失敗しました: ${response.error!.message}';
-      } else if (response.productDetails.isNotEmpty) {
-        _product = response.productDetails.first;
-        _debugLog('Product loaded: ${_product!.price}');
-      } else {
-        _debugLog('No product found for $kProductId');
-      }
-    } catch (e) {
-      _debugLog('_loadProducts error: $e');
-    }
-    notifyListeners();
-  }
-
-  Future<void> _silentRestore() async {
-    try {
-      await _iap.restorePurchases();
-    } catch (_) {
-      // サイレント失敗 – UI には表示しない
-    }
-  }
-
-  /// 購入イベントハンドラ（ストリームから呼ばれる）
-  Future<void> _onPurchaseUpdate(List<PurchaseDetails> list) async {
-    for (final purchase in list) {
-      if (purchase.productID != kProductId) continue;
-
-      switch (purchase.status) {
-        case PurchaseStatus.purchased:
-        case PurchaseStatus.restored:
-          await _setSubscribed(true);
-          _debugLog('Subscription active (${purchase.status})');
-          break;
-
-        case PurchaseStatus.error:
-          final msg = purchase.error?.message ?? '不明なエラー';
-          _errorMessage = '購入に失敗しました: $msg';
-          _setLoading(false);
-          _debugLog('Purchase error: $msg');
-          break;
-
-        case PurchaseStatus.canceled:
-          _setLoading(false);
-          _debugLog('Purchase canceled');
-          break;
-
-        case PurchaseStatus.pending:
-          // ペンディング中は何もしない（ローディング表示を維持）
-          _debugLog('Purchase pending');
-          break;
       }
 
-      // 購入確認を完了させる（必須）
-      if (purchase.pendingCompletePurchase) {
-        await _iap.completePurchase(purchase);
+      if (purchase.status == PurchaseStatus.purchased ||
+          purchase.status == PurchaseStatus.restored) {
+        // Verify and deliver the product
+        _setSubscribed(true);
+        if (purchase.pendingCompletePurchase) {
+          InAppPurchase.instance.completePurchase(purchase);
+        }
+      } else if (purchase.status == PurchaseStatus.error) {
+        _errorMessage = purchase.error?.message ?? '購入エラーが発生しました';
+        _isLoading = false;
+        notifyListeners();
+      } else if (purchase.status == PurchaseStatus.canceled) {
+        _isLoading = false;
+        notifyListeners();
       }
+    }
+
+    // Complete the restore completer if waiting
+    if (_restoreCompleter != null && !_restoreCompleter!.isCompleted) {
+      _restoreCompleter!.complete();
     }
   }
 
   Future<void> _setSubscribed(bool value) async {
     _isSubscribed = value;
+    _isLoading = false;
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefKey, value);
-    _setLoading(false);
-  }
 
-  void _setLoading(bool value) {
-    _isLoading = value;
+    // Record when we last verified the subscription
+    if (value) {
+      await prefs.setInt(
+        _prefKeyLastVerified,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    }
+
     notifyListeners();
   }
 
-  void _clearError() {
+  /// Purchase the monthly subscription plan.
+  Future<void> purchaseMonthlyPlan() async {
+    if (kIsWeb) {
+      await _setSubscribed(true);
+      return;
+    }
+
+    if (!_isAvailable) {
+      _errorMessage = 'ストアが利用できません';
+      notifyListeners();
+      return;
+    }
+
+    _isLoading = true;
     _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final response = await InAppPurchase.instance
+          .queryProductDetails({_productId});
+
+      if (response.notFoundIDs.isNotEmpty || response.productDetails.isEmpty) {
+        _errorMessage = '商品が見つかりませんでした';
+        _isLoading = false;
+        notifyListeners();
+        return;
+      }
+
+      final productDetails = response.productDetails.first;
+      final purchaseParam = PurchaseParam(productDetails: productDetails);
+      await InAppPurchase.instance.buyNonConsumable(
+        purchaseParam: purchaseParam,
+      );
+      // Note: Navigation should happen in _onPurchaseUpdated callback,
+      // not immediately after calling buyNonConsumable
+    } catch (e) {
+      _errorMessage = '購入処理でエラーが発生しました: $e';
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
-  void _debugLog(String msg) {
-    if (kDebugMode) debugPrint('[SubscriptionService] $msg');
+  /// Restore previous purchases.
+  Future<void> restorePurchases() async {
+    if (kIsWeb) {
+      await _setSubscribed(true);
+      return;
+    }
+
+    if (!_isAvailable) {
+      _errorMessage = 'ストアが利用できません';
+      notifyListeners();
+      return;
+    }
+
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      _restoreCompleter = Completer<void>();
+      await InAppPurchase.instance.restorePurchases();
+
+      // Wait for restore results with timeout
+      await _restoreCompleter!.future.timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('[SubscriptionService] restore timed out');
+          }
+        },
+      );
+    } catch (e) {
+      _errorMessage = '復元エラー: $e';
+    } finally {
+      _restoreCompleter = null;
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
-  // ── deprecated 互換エイリアス（既存コードへの後方互換） ──────────────────
-  @Deprecated('Use purchaseMonthlyPlan() instead')
-  Future<bool> subscribe() async {
-    await purchaseMonthlyPlan();
-    return _isSubscribed;
-  }
-
-  @Deprecated('Use restorePurchases() instead')
-  Future<void> restore() async => restorePurchases();
-
-  // iOS StoreKit 向けのスタブ（後方互換 – 内部で purchaseMonthlyPlan を委譲）
-  // ignore: non_constant_identifier_names
-  Future<void> purchaseSubscription_iOS(String productID) async =>
-      purchaseMonthlyPlan();
-
-  // Android 向けのスタブ（後方互換 – 内部で purchaseMonthlyPlan を委譲）
-  // ignore: non_constant_identifier_names
-  Future<void> purchaseSubscription_Android(String productID) async =>
-      purchaseMonthlyPlan();
-
-  // ────────────────────────────────────────────────────────────────────────
-  // Dispose
-  // ────────────────────────────────────────────────────────────────────────
   @override
   void dispose() {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
-      try {
-        final addition =
-            _iap.getPlatformAddition<InAppPurchaseStoreKitPlatformAddition>();
-        addition.setDelegate(null);
-      } catch (_) {}
-    }
-    _purchaseStream?.cancel();
+    _purchaseSubscription?.cancel();
     super.dispose();
   }
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// iOS StoreKit デリゲート
-// プロモーションオファーを許可し、価格変更の同意ダイアログを非表示にする
-// ────────────────────────────────────────────────────────────────────────────
-class _ShotMapPaymentQueueDelegate implements SKPaymentQueueDelegateWrapper {
-  @override
-  bool shouldContinueTransaction(
-    SKPaymentTransactionWrapper transaction,
-    SKStorefrontWrapper storefront,
-  ) =>
-      true;
-
-  @override
-  bool shouldShowPriceConsent() => false;
 }

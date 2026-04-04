@@ -2,11 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../theme/app_theme.dart';
 import '../main_shell.dart';
 import '../models/user_profile_provider.dart';
 import '../services/subscription_service.dart';
+import '../services/apple_sign_in_service.dart';
 import 'paywall_screen.dart';
 import 'terms_screen.dart';
 import 'privacy_screen.dart';
@@ -24,7 +24,9 @@ class _LoginScreenState extends State<LoginScreen>
   late AnimationController _slideController;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
-  bool _isAppleSignInLoading = false;
+
+  bool _isLoading = false;
+  String? _loadingProvider; // which button is loading
 
   @override
   void initState() {
@@ -54,9 +56,8 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
-  /// ログイン状態をSharedPreferencesに保存
   Future<void> _saveLoginState({
-    required String provider,   // 'apple' / 'line' / 'google'
+    required String provider,
     required String displayName,
     String? email,
   }) async {
@@ -67,80 +68,6 @@ class _LoginScreenState extends State<LoginScreen>
     if (email != null) await prefs.setString('user_email', email);
   }
 
-  /// Sign in with Apple 処理
-  Future<void> _signInWithApple(BuildContext context) async {
-    setState(() => _isAppleSignInLoading = true);
-    try {
-      // Firebase Auth を使用しないため nonce は不要
-      // nonce を渡すと Firebase なしの環境ではエラーになる場合がある
-      final credential = await SignInWithApple.getAppleIDCredential(
-        scopes: [
-          AppleIDAuthorizationScopes.email,
-          AppleIDAuthorizationScopes.fullName,
-        ],
-      );
-
-      if (!context.mounted) return;
-
-      // Apple提供の情報
-      final email = credential.email;
-      final givenName = credential.givenName ?? '';
-      final familyName = credential.familyName ?? '';
-      final fullName = '$familyName$givenName'.trim();
-      final displayName = fullName.isNotEmpty ? fullName : 'Appleユーザー';
-
-      // ログイン状態を永続化
-      await _saveLoginState(
-        provider: 'apple',
-        displayName: displayName,
-        email: email,
-      );
-
-      // UserProfileProviderにユーザー名を反映
-      if (context.mounted) {
-        final profileProvider = context.read<UserProfileProvider>();
-        profileProvider.updateProfile(
-          name: displayName,
-          bio: profileProvider.bio,
-          customId: profileProvider.customId,
-          instagramUrl: profileProvider.instagramUrl,
-          youtubeUrl: profileProvider.youtubeUrl,
-          xUrl: profileProvider.xUrl,
-          tiktokUrl: profileProvider.tiktokUrl,
-        );
-      }
-
-      if (kDebugMode) {
-        debugPrint('Apple Sign In 成功: $displayName / $email');
-      }
-
-      if (!context.mounted) return;
-      // ログイン後の画面遷移
-      await _navigateAfterLogin(context);
-    } on SignInWithAppleAuthorizationException catch (e) {
-      if (!context.mounted) return;
-      if (e.code == AuthorizationErrorCode.canceled) {
-        return;
-      }
-      _showError(context, 'Sign in with Apple に失敗しました。もう一度お試しください。');
-    } catch (e) {
-      if (!context.mounted) return;
-      _showError(context, 'ログインに失敗しました。もう一度お試しください。');
-    } finally {
-      if (mounted) setState(() => _isAppleSignInLoading = false);
-    }
-  }
-
-  void _showError(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: Colors.red,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ));
-  }
-
-  /// ログイン後の画面遷移（サブスク確認）
   Future<void> _navigateAfterLogin(BuildContext context) async {
     final sub = context.read<SubscriptionService>();
     if (sub.isLoading) {
@@ -164,42 +91,245 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
-  /// LINE / Google ログイン（スタブ：ログイン状態を保存して遷移）
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(message, style: const TextStyle(fontSize: 13)),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFFE53935),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: '閉じる',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+
+  // ─── Apple Sign In (real implementation) ───
+  Future<void> _onAppleSignIn(BuildContext context) async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+      _loadingProvider = 'apple';
+    });
+
+    try {
+      // Check availability first (iPad support included)
+      final isAvailable = await AppleSignInService.isAvailable();
+
+      if (!isAvailable) {
+        // Fallback for devices where Apple Sign In is not available
+        if (kIsWeb) {
+          // Web demo mode
+          await _completeSocialLogin(
+            context: context,
+            provider: 'apple',
+            displayName: 'Appleユーザー',
+          );
+          return;
+        }
+        _showErrorSnackBar('このデバイスではApple IDサインインを利用できません');
+        return;
+      }
+
+      // Perform actual Apple Sign In (includes automatic retry for transient errors)
+      final result = await AppleSignInService.signIn();
+
+      if (!mounted) return;
+
+      if (result.success) {
+        await _completeSocialLogin(
+          context: context,
+          provider: 'apple',
+          displayName: result.displayName,
+          email: result.email,
+        );
+      } else if (result.isCanceled) {
+        // User canceled - do nothing, just reset state
+        if (kDebugMode) {
+          debugPrint('[Login] Apple Sign In canceled by user');
+        }
+      } else {
+        // Show error dialog with retry option (better UX than snackbar for auth errors)
+        _showSignInErrorDialog(
+          result.errorMessage ?? '認証エラーが発生しました',
+          onRetry: () => _onAppleSignIn(context),
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[Login] Apple Sign In unexpected error: $e');
+      }
+      if (mounted) {
+        _showSignInErrorDialog(
+          '接続エラーが発生しました。\nネットワーク接続を確認してもう一度お試しください。',
+          onRetry: () => _onAppleSignIn(context),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadingProvider = null;
+        });
+      }
+    }
+  }
+
+  /// Show an error dialog with retry option for sign-in failures.
+  /// More visible and actionable than a SnackBar for authentication errors.
+  void _showSignInErrorDialog(String message, {VoidCallback? onRetry}) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.error_outline, color: Color(0xFFE53935), size: 24),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'サインインエラー',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(fontSize: 14, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              '閉じる',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+          if (onRetry != null)
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                onRetry();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('もう一度試す'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ─── LINE / Google login (stub with loading state) ───
   Future<void> _onSocialLogin(BuildContext context, String provider) async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+      _loadingProvider = provider;
+    });
+
+    try {
+      final displayName = provider == 'line' ? 'LINEユーザー' : 'Googleユーザー';
+      await _completeSocialLogin(
+        context: context,
+        provider: provider,
+        displayName: displayName,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadingProvider = null;
+        });
+      }
+    }
+  }
+
+  // ─── Common login completion ───
+  Future<void> _completeSocialLogin({
+    required BuildContext context,
+    required String provider,
+    required String displayName,
+    String? email,
+  }) async {
     await _saveLoginState(
       provider: provider,
-      displayName: provider == 'line' ? 'LINEユーザー' : 'Googleユーザー',
+      displayName: displayName,
+      email: email,
     );
+
+    if (!context.mounted) return;
+    final profileProvider = context.read<UserProfileProvider>();
+    profileProvider.updateProfile(
+      name: displayName,
+      bio: profileProvider.bio,
+      customId: profileProvider.customId,
+      instagramUrl: profileProvider.instagramUrl,
+      youtubeUrl: profileProvider.youtubeUrl,
+      xUrl: profileProvider.xUrl,
+      tiktokUrl: profileProvider.tiktokUrl,
+    );
+
     if (!context.mounted) return;
     await _navigateAfterLogin(context);
   }
 
   @override
   Widget build(BuildContext context) {
+    // iPad adaptive padding
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
+    final horizontalPadding = isTablet ? screenWidth * 0.15 : 32.0;
+
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 背景色
           Container(color: const Color(0xFF3D8FBF)),
-
-          // 富士山背景写真
           Positioned.fill(
             child: Image.asset(
               'assets/images/fuji_bg.png',
               fit: BoxFit.cover,
               alignment: const Alignment(0.0, -0.3),
+              errorBuilder: (_, __, ___) => Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFF5BA4CF), Color(0xFF2E7CB8)],
+                  ),
+                ),
+              ),
             ),
           ),
-
-          // 暗オーバーレイ
           Positioned.fill(
             child: Container(
               color: Colors.black.withValues(alpha: 0.25),
             ),
           ),
-
-          // 下部グラデーション
           Positioned(
             bottom: 0, left: 0, right: 0, height: 460,
             child: Container(
@@ -213,24 +343,22 @@ class _LoginScreenState extends State<LoginScreen>
               ),
             ),
           ),
-
-          // メインコンテンツ
           SafeArea(
             child: FadeTransition(
               opacity: _fadeAnim,
               child: SlideTransition(
                 position: _slideAnim,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                   child: Column(
                     children: [
                       const SizedBox(height: 50),
                       _buildLogo(),
                       const SizedBox(height: 14),
                       Text(
-                        'Shotmap',
+                        'Shot map',
                         style: TextStyle(
-                          fontSize: 38,
+                          fontSize: isTablet ? 44 : 38,
                           fontWeight: FontWeight.w800,
                           color: Colors.white,
                           letterSpacing: 1.5,
@@ -247,7 +375,7 @@ class _LoginScreenState extends State<LoginScreen>
                       Text(
                         'あなたの「お気に入り」が',
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: isTablet ? 16 : 14,
                           fontWeight: FontWeight.w400,
                           color: Colors.white.withValues(alpha: 0.92),
                           shadows: [Shadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
@@ -257,7 +385,7 @@ class _LoginScreenState extends State<LoginScreen>
                       Text(
                         '誰かの「最高の景色」になる。',
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: isTablet ? 16 : 14,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
                           shadows: [Shadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
@@ -265,7 +393,7 @@ class _LoginScreenState extends State<LoginScreen>
                         textAlign: TextAlign.center,
                       ),
                       const Spacer(),
-                      _buildLoginCard(context),
+                      _buildLoginCard(context, isTablet: isTablet),
                       const SizedBox(height: 44),
                     ],
                   ),
@@ -313,9 +441,10 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _buildLoginCard(BuildContext context) {
+  Widget _buildLoginCard(BuildContext context, {bool isTablet = false}) {
     return Container(
-      padding: const EdgeInsets.all(28),
+      padding: EdgeInsets.all(isTablet ? 36 : 28),
+      constraints: const BoxConstraints(maxWidth: 500),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
@@ -333,46 +462,52 @@ class _LoginScreenState extends State<LoginScreen>
           Text(
             'はじめましょう',
             style: TextStyle(
-              fontSize: 20,
+              fontSize: isTablet ? 24 : 20,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            '1分で登録完了！あなたの発見を共有しよう✨',
+            '1分で登録完了！あなたの発見を共有しよう',
             style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 24),
 
-          // ① Sign in with Apple（Apple審査ガイドライン4.8：最上部に配置）
-          _buildAppleSignInButton(context),
-
+          // Apple Sign In
+          _buildSocialButton(
+            context: context,
+            label: 'Appleでサインイン',
+            color: Colors.black,
+            icon: Icons.apple,
+            provider: 'apple',
+            onTap: () => _onAppleSignIn(context),
+          ),
           const SizedBox(height: 12),
 
-          // ② LINEでログイン
+          // LINE
           _buildSocialButton(
             context: context,
             label: 'LINEでログイン',
             color: const Color(0xFF06C755),
+            provider: 'line',
             onTap: () => _onSocialLogin(context, 'line'),
           ),
-
           const SizedBox(height: 12),
 
-          // ③ Googleでログイン
+          // Google
           _buildSocialButton(
             context: context,
             label: 'Googleでログイン',
             color: Colors.white,
             textColor: AppColors.textPrimary,
             hasBorder: true,
+            provider: 'google',
             onTap: () => _onSocialLogin(context, 'google'),
           ),
 
           const SizedBox(height: 20),
 
-          // 利用規約・プライバシーポリシー
           Center(
             child: Wrap(
               alignment: WrapAlignment.center,
@@ -415,91 +550,68 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  /// Sign in with Apple ボタン（Apple HIG準拠デザイン）
-  Widget _buildAppleSignInButton(BuildContext context) {
-    return GestureDetector(
-      onTap: _isAppleSignInLoading ? null : () => _signInWithApple(context),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        height: 52,
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.25),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Center(
-          child: _isAppleSignInLoading
-              ? const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2.5,
-                  ),
-                )
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Appleロゴ（SVGの代わりにIcon使用）
-                    const Icon(Icons.apple, color: Colors.white, size: 22),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Appleでサインイン',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ],
-                ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildSocialButton({
     required BuildContext context,
     required String label,
     required Color color,
     required VoidCallback onTap,
+    required String provider,
     Color textColor = Colors.white,
     bool hasBorder = false,
+    IconData? icon,
   }) {
+    final isCurrentLoading = _loadingProvider == provider;
+    final isDisabled = _isLoading && !isCurrentLoading;
+
     return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        height: 52,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(14),
-          border: hasBorder ? Border.all(color: AppColors.border, width: 1.5) : null,
-          boxShadow: hasBorder
-              ? null
-              : [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.35),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+      onTap: isDisabled ? null : onTap,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 200),
+        opacity: isDisabled ? 0.5 : 1.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: 52,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(14),
+            border: hasBorder ? Border.all(color: AppColors.border, width: 1.5) : null,
+            boxShadow: hasBorder
+                ? null
+                : [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+          ),
+          child: Center(
+            child: isCurrentLoading
+                ? SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: textColor,
+                    ),
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (icon != null) ...[
+                        Icon(icon, color: textColor, size: 22),
+                        const SizedBox(width: 8),
+                      ],
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: textColor,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: textColor,
-            ),
           ),
         ),
       ),
