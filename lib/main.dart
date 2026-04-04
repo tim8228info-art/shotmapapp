@@ -90,9 +90,16 @@ class ShotmapApp extends StatelessWidget {
 }
 
 /// Splash router that waits for SubscriptionService to finish initialization,
-/// then routes to the correct screen (MainShell if subscribed, PaywallScreen if not).
-/// This ensures subscription state from SharedPreferences + StoreKit restore
-/// is fully resolved before showing the app.
+/// then routes to the correct screen.
+///
+/// IMPORTANT: Uses ONLY the cached SharedPreferences value to decide routing.
+/// Silent restore may detect Sandbox/TestFlight past purchases and set
+/// isSubscribed=true, but we must NOT auto-skip the PaywallScreen based on
+/// that. The user must explicitly purchase or restore on the PaywallScreen.
+///
+/// Routing logic:
+/// - If cached pref says subscribed → go to MainShell (user paid before)
+/// - Otherwise → always show PaywallScreen (even if silentRestore found subs)
 class _SplashRouter extends StatefulWidget {
   const _SplashRouter();
 
@@ -108,15 +115,24 @@ class _SplashRouterState extends State<_SplashRouter> {
   }
 
   Future<void> _waitAndRoute() async {
-    // Wait for subscription service to finish initializing
+    // Read the user-confirmed subscription state.
+    // ONLY 'is_subscribed_confirmed' is set by explicit user actions
+    // (purchase / restore on PaywallScreen). Silent restore never sets this.
+    final prefs = await SharedPreferences.getInstance();
+    final userConfirmedSubscribed =
+        prefs.getBool('is_subscribed_confirmed') ?? false;
+
+    // Still wait for init to complete so the service is ready
     final sub = context.read<SubscriptionService>();
     await sub.waitForInit();
 
     if (!mounted) return;
 
-    // Route based on subscription state
+    // Route based on user-confirmed state ONLY.
+    // If user previously completed a purchase/restore explicitly → MainShell.
+    // Otherwise → always show PaywallScreen (even if silentRestore found subs).
     final Widget destination =
-        sub.isSubscribed ? const MainShell() : const PaywallScreen();
+        userConfirmedSubscribed ? const MainShell() : const PaywallScreen();
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(

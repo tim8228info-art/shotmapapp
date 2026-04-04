@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/subscription_service.dart';
 import '../main_shell.dart';
 import 'terms_screen.dart';
 import 'privacy_screen.dart';
 
-class PaywallScreen extends StatelessWidget {
+class PaywallScreen extends StatefulWidget {
   const PaywallScreen({super.key});
+
+  @override
+  State<PaywallScreen> createState() => _PaywallScreenState();
+}
+
+class _PaywallScreenState extends State<PaywallScreen> {
+  /// Guard to prevent multiple navigation calls
+  bool _hasNavigated = false;
 
   // Dark theme colors
   static const _bgTop = Color(0xFF0B1A2E);
@@ -17,6 +26,21 @@ class PaywallScreen extends StatelessWidget {
   static const _textWhite = Colors.white;
   static const _textGray = Color(0xFF8DA4BE);
   static const _checkGreen = Color(0xFF4CAF50);
+
+  /// Navigate to MainShell after a successful user-initiated purchase/restore.
+  /// Saves the confirmed subscription state so _SplashRouter knows next launch.
+  void _navigateToMain(BuildContext ctx, SubscriptionService sub) {
+    if (_hasNavigated) return;
+    _hasNavigated = true;
+    sub.clearPurchasedByUser();
+    // Persist the user-confirmed subscription flag
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool('is_subscribed_confirmed', true);
+    });
+    Navigator.of(ctx).pushReplacement(
+      MaterialPageRoute(builder: (_) => const MainShell()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -322,14 +346,13 @@ class PaywallScreen extends StatelessWidget {
   Widget _buildCtaButton(BuildContext context) {
     return Consumer<SubscriptionService>(
       builder: (context, sub, _) {
-        // Auto-navigate when subscription becomes active
-        // (purchase confirmed via stream listener)
-        if (sub.isSubscribed && !sub.isLoading) {
+        // Navigate ONLY when the user explicitly purchased or restored.
+        // Silent background restore does NOT trigger this because
+        // purchasedByUser stays false during silent restore.
+        if (sub.purchasedByUser && sub.isSubscribed && !sub.isLoading) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (context.mounted) {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const MainShell()),
-              );
+              _navigateToMain(context, sub);
             }
           });
         }
@@ -342,10 +365,8 @@ class PaywallScreen extends StatelessWidget {
                 ? null
                 : () async {
                     // Start purchase flow - navigation will happen
-                    // automatically when purchase is confirmed via listener
+                    // only when purchasedByUser becomes true via listener
                     await sub.purchaseMonthlyPlan();
-                    // If purchase completed synchronously (web),
-                    // the Consumer above will trigger navigation
                   },
             style: ElevatedButton.styleFrom(
               backgroundColor: _ctaColor,
@@ -388,9 +409,7 @@ class PaywallScreen extends StatelessWidget {
               : () async {
                   await sub.restorePurchases();
                   if (context.mounted && sub.isSubscribed) {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const MainShell()),
-                    );
+                    _navigateToMain(context, sub);
                   } else if (context.mounted && !sub.isSubscribed) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
