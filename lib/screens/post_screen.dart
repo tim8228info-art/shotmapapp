@@ -1,4 +1,7 @@
+import 'dart:io' show File;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import '../theme/app_theme.dart';
 import '../models/data_models.dart';
@@ -24,7 +27,10 @@ class _PostScreenState extends State<PostScreen> {
   PinType? _selectedPinType;
 
   // 写真スロット（最大5枚）。nullは未選択スロット
-  final List<String?> _photos = [null, null, null, null, null];
+  // 値は String (URL/パス) または XFile オブジェクト
+  final List<dynamic> _photos = [null, null, null, null, null];
+
+  final ImagePicker _imagePicker = ImagePicker();
 
   bool _submitting = false;
 
@@ -59,23 +65,189 @@ class _PostScreenState extends State<PostScreen> {
   int get _photoCount => _photos.where((p) => p != null).length;
 
   void _tapPhotoSlot(int index) {
-    // 実機では image_picker を使う。プレビュー用にダミー画像をセット
-    setState(() {
-      if (_photos[index] != null) {
-        // 既存写真はタップで削除
-        _photos[index] = null;
-      } else {
-        // ダミー: Unsplash の適当な画像
-        const dummies = [
-          'https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=400',
-          'https://images.unsplash.com/photo-1490806843957-31f4c9a91c65?w=400',
-          'https://images.unsplash.com/photo-1478436127897-769e1b3f0f36?w=400',
-          'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=400',
-          'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=400',
-        ];
-        _photos[index] = dummies[index % dummies.length];
+    if (_photos[index] != null) {
+      // 既存写真 → 削除確認
+      _showRemovePhotoDialog(index);
+    } else {
+      // 空スロット → 写真ソース選択
+      _showPhotoSourceSheet(index);
+    }
+  }
+
+  /// 写真削除確認ダイアログ
+  void _showRemovePhotoDialog(int index) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('写真を削除', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        content: const Text('この写真を削除しますか？', style: TextStyle(fontSize: 14)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('キャンセル', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _photos[index] = null);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE53935),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('削除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 写真ソース選択ボトムシート（カメラ / ライブラリ）
+  void _showPhotoSourceSheet(int index) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ハンドル
+                Container(
+                  width: 40, height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Text(
+                  '写真を追加',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'スポットの写真を選んでください',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 20),
+                // カメラボタン
+                _buildSourceOption(
+                  icon: Icons.camera_alt_rounded,
+                  label: 'カメラで撮影',
+                  subtitle: '今すぐ写真を撮影します',
+                  color: AppColors.primary,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickImage(index, ImageSource.camera);
+                  },
+                ),
+                const SizedBox(height: 12),
+                // ライブラリボタン
+                _buildSourceOption(
+                  icon: Icons.photo_library_rounded,
+                  label: '写真ライブラリから選択',
+                  subtitle: '端末に保存済みの写真を使います',
+                  color: const Color(0xFF9C27B0),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickImage(index, ImageSource.gallery);
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSourceOption({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48, height: 48,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: color, size: 26),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: color, size: 22),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// image_picker を使って写真を取得
+  Future<void> _pickImage(int index, ImageSource source) async {
+    try {
+      final XFile? picked = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+      if (picked != null && mounted) {
+        setState(() {
+          _photos[index] = picked;
+        });
       }
-    });
+    } catch (e) {
+      if (mounted) {
+        _showError('写真の取得に失敗しました。カメラ・写真へのアクセス権限を確認してください。');
+      }
+    }
   }
 
   void _addTag() {
@@ -556,15 +728,7 @@ class _PostScreenState extends State<PostScreen> {
               ? Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.network(
-                      _photos[index]!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: AppColors.primaryLight,
-                        child: const Icon(Icons.image,
-                            color: Colors.white),
-                      ),
-                    ),
+                    _buildPhotoImage(_photos[index]!),
                     // 削除ヒントオーバーレイ
                     Positioned(
                       top: 5,
@@ -636,6 +800,45 @@ class _PostScreenState extends State<PostScreen> {
                 ),
         ),
       ),
+    );
+  }
+
+  /// 写真表示ウィジェット（XFile / URL 文字列の両方に対応）
+  Widget _buildPhotoImage(dynamic photo) {
+    if (photo is XFile) {
+      // ネイティブ: File、Web: XFile.path は blob URL
+      if (kIsWeb) {
+        return Image.network(
+          photo.path,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: AppColors.primaryLight,
+            child: const Icon(Icons.image, color: Colors.white),
+          ),
+        );
+      } else {
+        return Image.file(
+          File(photo.path),
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: AppColors.primaryLight,
+            child: const Icon(Icons.image, color: Colors.white),
+          ),
+        );
+      }
+    } else if (photo is String) {
+      return Image.network(
+        photo,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          color: AppColors.primaryLight,
+          child: const Icon(Icons.image, color: Colors.white),
+        ),
+      );
+    }
+    return Container(
+      color: AppColors.primaryLight,
+      child: const Icon(Icons.image, color: Colors.white),
     );
   }
 

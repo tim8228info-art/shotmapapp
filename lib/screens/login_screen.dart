@@ -274,21 +274,27 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    // iPad adaptive padding
     final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
     final isTablet = screenWidth > 600;
-    final horizontalPadding = isTablet ? screenWidth * 0.15 : 32.0;
+    final isLandscape = screenWidth > screenHeight;
+    // iPad 13インチ ランドスケープ対応
+    final isLargeTablet = screenWidth > 1000;
 
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
         children: [
+          // ── 背景色 ──
           Container(color: const Color(0xFF3D8FBF)),
+          // ── 背景画像 ──
           Positioned.fill(
             child: Image.asset(
               'assets/images/fuji_bg.png',
               fit: BoxFit.cover,
-              alignment: const Alignment(0.0, -0.3),
+              alignment: isLandscape
+                  ? const Alignment(0.0, -0.2)
+                  : const Alignment(0.0, -0.3),
               errorBuilder: (_, __, ___) => Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
@@ -300,79 +306,40 @@ class _LoginScreenState extends State<LoginScreen>
               ),
             ),
           ),
+          // ── ダークオーバーレイ ──
           Positioned.fill(
             child: Container(
               color: Colors.black.withValues(alpha: 0.25),
             ),
           ),
+          // ── 下部グラデーション ──
           Positioned(
-            bottom: 0, left: 0, right: 0, height: 460,
+            bottom: 0, left: 0, right: 0,
+            height: isLandscape ? screenHeight * 0.85 : 460,
             child: Container(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Color(0xAA000000), Color(0xDD000000)],
-                  stops: [0.0, 0.5, 1.0],
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.55),
+                    Colors.black.withValues(alpha: 0.80),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
                 ),
               ),
             ),
           ),
+          // ── コンテンツ ──
           SafeArea(
             child: FadeTransition(
               opacity: _fadeAnim,
               child: SlideTransition(
                 position: _slideAnim,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 50),
-                      _buildLogo(),
-                      const SizedBox(height: 14),
-                      Text(
-                        'Shot map',
-                        style: TextStyle(
-                          fontSize: isTablet ? 44 : 38,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 1.5,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black.withValues(alpha: 0.18),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'あなたの「お気に入り」が',
-                        style: TextStyle(
-                          fontSize: isTablet ? 16 : 14,
-                          fontWeight: FontWeight.w400,
-                          color: Colors.white.withValues(alpha: 0.92),
-                          shadows: [Shadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      Text(
-                        '誰かの「最高の景色」になる。',
-                        style: TextStyle(
-                          fontSize: isTablet ? 16 : 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          shadows: [Shadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const Spacer(),
-                      _buildLoginCard(context, isTablet: isTablet),
-                      const SizedBox(height: 44),
-                    ],
-                  ),
-                ),
+                child: isLargeTablet && isLandscape
+                    ? _buildLandscapeTabletLayout(context)
+                    : _buildPortraitLayout(context, isTablet: isTablet),
               ),
             ),
           ),
@@ -381,9 +348,136 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _buildLogo() {
+  /// iPhone / iPad ポートレート用レイアウト（従来と同じ縦並び）
+  Widget _buildPortraitLayout(BuildContext context, {bool isTablet = false}) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPadding = isTablet ? screenWidth * 0.15 : 32.0;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: Column(
+        children: [
+          const SizedBox(height: 50),
+          _buildLogo(),
+          const SizedBox(height: 14),
+          Text(
+            'Shot map',
+            style: TextStyle(
+              fontSize: isTablet ? 44 : 38,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: 1.5,
+              shadows: [
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'あなたの「お気に入り」が',
+            style: TextStyle(
+              fontSize: isTablet ? 16 : 14,
+              fontWeight: FontWeight.w400,
+              color: Colors.white.withValues(alpha: 0.92),
+              shadows: [Shadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          Text(
+            '誰かの「最高の景色」になる。',
+            style: TextStyle(
+              fontSize: isTablet ? 16 : 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+              shadows: [Shadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const Spacer(),
+          _buildLoginCard(context, isTablet: isTablet),
+          const SizedBox(height: 44),
+        ],
+      ),
+    );
+  }
+
+  /// iPad 13インチ ランドスケープ用レイアウト
+  /// iPhoneと全く同じ要素を横幅を活かしてセンタリング配置
+  Widget _buildLandscapeTabletLayout(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── ロゴ（iPhoneと同じ） ──
+              _buildLogo(size: 100),
+              const SizedBox(height: 18),
+              // ── アプリ名 ──
+              Text(
+                'Shot map',
+                style: TextStyle(
+                  fontSize: 52,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 1.5,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.18),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              // ── サブタイトル（iPhoneと同じ） ──
+              Text(
+                'あなたの「お気に入り」が',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w400,
+                  color: Colors.white.withValues(alpha: 0.92),
+                  shadows: [Shadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
+                ),
+                textAlign: TextAlign.center,
+              ),
+              Text(
+                '誰かの「最高の景色」になる。',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  shadows: [Shadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6)],
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 36),
+              // ── ログインカード（iPhoneと同じデザイン） ──
+              _buildLoginCard(context, isTablet: true),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogo({double size = 88}) {
+    final iconSize = size * 0.545; // 48/88
+    final cameraSize = size * 0.295; // 26/88
+    final cameraIconSize = size * 0.148; // 13/88
+    final cameraBottom = size * 0.205; // 18/88
+    final cameraRight = size * 0.205;
+    final cameraBorderWidth = size * 0.023; // 2/88
+
     return Container(
-      width: 88, height: 88,
+      width: size, height: size,
       decoration: BoxDecoration(
         color: Colors.white,
         shape: BoxShape.circle,
@@ -398,17 +492,17 @@ class _LoginScreenState extends State<LoginScreen>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          const Icon(Icons.location_on, size: 48, color: AppColors.primary),
+          Icon(Icons.location_on, size: iconSize, color: AppColors.primary),
           Positioned(
-            bottom: 18, right: 18,
+            bottom: cameraBottom, right: cameraRight,
             child: Container(
-              width: 26, height: 26,
+              width: cameraSize, height: cameraSize,
               decoration: BoxDecoration(
                 color: AppColors.accent,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
+                border: Border.all(color: Colors.white, width: cameraBorderWidth),
               ),
-              child: const Icon(Icons.camera_alt, size: 13, color: Colors.white),
+              child: Icon(Icons.camera_alt, size: cameraIconSize, color: Colors.white),
             ),
           ),
         ],
@@ -419,7 +513,7 @@ class _LoginScreenState extends State<LoginScreen>
   Widget _buildLoginCard(BuildContext context, {bool isTablet = false}) {
     return Container(
       padding: EdgeInsets.all(isTablet ? 36 : 28),
-      constraints: const BoxConstraints(maxWidth: 500),
+      constraints: BoxConstraints(maxWidth: isTablet ? 540 : 500),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -5,7 +6,10 @@ import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
 import '../theme/app_theme.dart';
 
-/// flutter_map version of MapPickerScreen (web-compatible)
+/// マップピッカー画面
+/// ・マップタップで自由にピンを立てる
+/// ・検索バーで地名検索 → ジャンプ
+/// ・Nominatim 逆ジオコーディングで既存の場所・お店を候補表示し選択可能
 class MapPickerScreen extends StatefulWidget {
   final LatLng? initialCenter;
   const MapPickerScreen({super.key, this.initialCenter});
@@ -22,6 +26,16 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   bool _isSearching = false;
 
+  // ── 周辺POI候補 ──
+  List<_PlaceResult> _nearbyPlaces = [];
+  bool _loadingNearby = false;
+  _PlaceResult? _selectedPlace; // POIから選んだ場合
+
+  // ── 検索候補リスト ──
+  List<_PlaceResult> _searchResults = [];
+  bool _showSearchResults = false;
+  Timer? _searchDebounce;
+
   static const List<_QuickSpot> _quickSpots = [
     _QuickSpot('東京', LatLng(35.6895, 139.6917)),
     _QuickSpot('大阪', LatLng(34.6937, 135.5023)),
@@ -37,13 +51,18 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   void dispose() {
     _mapController.dispose();
     _searchCtrl.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 
+  // ─── 場所テキスト検索（Enter確定） ───
   Future<void> _searchPlace(String query) async {
     final q = query.trim();
     if (q.isEmpty) return;
-    setState(() => _isSearching = true);
+    setState(() {
+      _isSearching = true;
+      _showSearchResults = false;
+    });
     try {
       final url = Uri.parse(
         'https://nominatim.openstreetmap.org/search'
@@ -73,6 +92,199 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     }
   }
 
+  // ─── インクリメンタル検索（入力中にリアルタイム候補表示） ───
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    final q = value.trim();
+    if (q.length < 2) {
+      setState(() {
+        _searchResults = [];
+        _showSearchResults = false;
+      });
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+      _fetchSearchSuggestions(q);
+    });
+  }
+
+  Future<void> _fetchSearchSuggestions(String query) async {
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/search'
+        '?q=${Uri.encodeComponent(query)}'
+        '&format=json&limit=8&accept-language=ja&countrycodes=jp'
+        '&addressdetails=1',
+      );
+      final res = await http.get(url, headers: {'User-Agent': 'ShotMapApp/1.0'});
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as List;
+        final results = data.map((item) {
+          final lat = double.tryParse(item['lat'] as String) ?? 0;
+          final lng = double.tryParse(item['lon'] as String) ?? 0;
+          final name = item['display_name'] as String? ?? '';
+          final type = item['type'] as String? ?? '';
+          final category = item['class'] as String? ?? '';
+          return _PlaceResult(
+            name: _shortenDisplayName(name),
+            fullName: name,
+            lat: lat,
+            lng: lng,
+            type: type,
+            category: category,
+          );
+        }).toList();
+        setState(() {
+          _searchResults = results;
+          _showSearchResults = results.isNotEmpty;
+        });
+      }
+    } catch (_) {
+      // 検索候補取得失敗は無視
+    }
+  }
+
+  /// 長すぎる表示名を短縮
+  String _shortenDisplayName(String name) {
+    final parts = name.split(',');
+    if (parts.length <= 2) return name;
+    // 最初の2パートだけ表示
+    return '${parts[0].trim()}, ${parts[1].trim()}';
+  }
+
+  // ─── マップタップ時に周辺POI取得 ───
+  void _onMapTap(LatLng latLng) {
+    setState(() {
+      _picked = latLng;
+      _selectedPlace = null;
+      _showSearchResults = false;
+    });
+    FocusScope.of(context).unfocus();
+    _fetchNearbyPlaces(latLng);
+  }
+
+  /// Nominatim 逆ジオコーディング + 周辺検索で、タップ地点付近のPOI候補を取得
+  Future<void> _fetchNearbyPlaces(LatLng center) async {
+    setState(() {
+      _loadingNearby = true;
+      _nearbyPlaces = [];
+    });
+
+    try {
+      // 1. 逆ジオコーディング（タップ地点の住所）
+      final reverseUrl = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse'
+        '?lat=${center.latitude}&lon=${center.longitude}'
+        '&format=json&accept-language=ja&zoom=18&addressdetails=1',
+      );
+      final reverseRes = await http.get(reverseUrl, headers: {'User-Agent': 'ShotMapApp/1.0'});
+
+      // 2. 周辺のPOI検索 (amenity, tourism, shop, leisure)
+      // Nominatim search で viewbox を使い範囲内のPOIを取得
+      final delta = 0.005; // 約500m四方
+
+      // amenity/tourism/shop カテゴリ別に小さいクエリ
+      final poiUrl = Uri.parse(
+        'https://nominatim.openstreetmap.org/search'
+        '?format=json&limit=10&accept-language=ja'
+        '&viewbox=${center.longitude - delta},${center.latitude + delta},'
+        '${center.longitude + delta},${center.latitude - delta}'
+        '&bounded=1'
+        '&addressdetails=1',
+      );
+
+      final futures = await Future.wait([
+        reverseRes.statusCode == 200 ? Future.value(reverseRes) : http.get(reverseUrl, headers: {'User-Agent': 'ShotMapApp/1.0'}),
+        http.get(poiUrl, headers: {'User-Agent': 'ShotMapApp/1.0'}),
+      ]);
+
+      if (!mounted) return;
+
+      final List<_PlaceResult> places = [];
+
+      // 逆ジオコーディング結果
+      if (futures[0].statusCode == 200) {
+        final revData = jsonDecode(futures[0].body);
+        if (revData is Map && revData['display_name'] != null) {
+          final name = revData['display_name'] as String;
+          final lat = double.tryParse(revData['lat']?.toString() ?? '') ?? center.latitude;
+          final lng = double.tryParse(revData['lon']?.toString() ?? '') ?? center.longitude;
+          final type = revData['type'] as String? ?? '';
+          final category = revData['class'] as String? ?? '';
+          places.add(_PlaceResult(
+            name: _shortenDisplayName(name),
+            fullName: name,
+            lat: lat,
+            lng: lng,
+            type: type,
+            category: category,
+            isReverseGeocode: true,
+          ));
+        }
+      }
+
+      // 周辺POI検索結果
+      if (futures[1].statusCode == 200) {
+        final poiData = jsonDecode(futures[1].body) as List;
+        for (final item in poiData) {
+          final lat = double.tryParse(item['lat']?.toString() ?? '') ?? 0;
+          final lng = double.tryParse(item['lon']?.toString() ?? '') ?? 0;
+          final name = item['display_name'] as String? ?? '';
+          final type = item['type'] as String? ?? '';
+          final category = item['class'] as String? ?? '';
+          // 重複排除（逆ジオコーディングと同じ場所は除く）
+          if (places.isNotEmpty &&
+              (places[0].lat - lat).abs() < 0.0001 &&
+              (places[0].lng - lng).abs() < 0.0001) {
+            continue;
+          }
+          places.add(_PlaceResult(
+            name: _shortenDisplayName(name),
+            fullName: name,
+            lat: lat,
+            lng: lng,
+            type: type,
+            category: category,
+          ));
+        }
+      }
+
+      setState(() {
+        _nearbyPlaces = places.take(6).toList();
+        _loadingNearby = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _nearbyPlaces = [];
+          _loadingNearby = false;
+        });
+      }
+    }
+  }
+
+  void _selectPlace(_PlaceResult place) {
+    setState(() {
+      _picked = LatLng(place.lat, place.lng);
+      _selectedPlace = place;
+    });
+    _mapController.move(LatLng(place.lat, place.lng), 17.0);
+  }
+
+  void _selectSearchResult(_PlaceResult place) {
+    setState(() {
+      _picked = LatLng(place.lat, place.lng);
+      _selectedPlace = place;
+      _showSearchResults = false;
+      _searchResults = [];
+    });
+    _searchCtrl.clear();
+    FocusScope.of(context).unfocus();
+    _mapController.move(LatLng(place.lat, place.lng), 17.0);
+    _fetchNearbyPlaces(LatLng(place.lat, place.lng));
+  }
+
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg, style: TextStyle(fontSize: 13)),
@@ -84,10 +296,6 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     ));
   }
 
-  void _onMapTap(LatLng latLng) {
-    setState(() => _picked = latLng);
-  }
-
   void _confirm() => Navigator.of(context).pop(_picked);
   void _cancel() => Navigator.of(context).pop(null);
 
@@ -97,6 +305,30 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
 
   String _formatLatLng(LatLng ll) {
     return 'N${ll.latitude.toStringAsFixed(5)}, E${ll.longitude.toStringAsFixed(5)}';
+  }
+
+  IconData _placeIcon(String category, String type) {
+    if (category == 'amenity') {
+      if (type == 'restaurant' || type == 'fast_food' || type == 'cafe') return Icons.restaurant;
+      if (type == 'bar' || type == 'pub') return Icons.local_bar;
+      if (type == 'hospital' || type == 'clinic') return Icons.local_hospital;
+      if (type == 'school' || type == 'university') return Icons.school;
+      if (type == 'parking') return Icons.local_parking;
+      if (type == 'fuel') return Icons.local_gas_station;
+      return Icons.place;
+    }
+    if (category == 'tourism') {
+      if (type == 'hotel' || type == 'guest_house') return Icons.hotel;
+      if (type == 'museum') return Icons.museum;
+      if (type == 'attraction' || type == 'viewpoint') return Icons.landscape;
+      return Icons.tour;
+    }
+    if (category == 'shop') return Icons.store;
+    if (category == 'leisure') return Icons.park;
+    if (category == 'highway') return Icons.directions;
+    if (category == 'building') return Icons.apartment;
+    if (category == 'railway') return Icons.train;
+    return Icons.location_on;
   }
 
   @override
@@ -120,6 +352,48 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                 urlTemplate: tileUrl,
                 userAgentPackageName: 'com.shotmap.pins',
               ),
+              // 周辺POIマーカー（小さいグレー丸）
+              if (_nearbyPlaces.isNotEmpty && _picked != null)
+                MarkerLayer(
+                  markers: _nearbyPlaces
+                      .where((p) => !p.isReverseGeocode)
+                      .map((place) {
+                    final isSelected = _selectedPlace == place;
+                    return Marker(
+                      point: LatLng(place.lat, place.lng),
+                      width: isSelected ? 44 : 36,
+                      height: isSelected ? 44 : 36,
+                      child: GestureDetector(
+                        onTap: () => _selectPlace(place),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isSelected ? AppColors.primary : Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isSelected ? Colors.white : AppColors.primary,
+                              width: 2,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.25),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Icon(
+                              _placeIcon(place.category, place.type),
+                              size: isSelected ? 20 : 16,
+                              color: isSelected ? Colors.white : AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              // メインピン（選択中）
               if (_picked != null)
                 MarkerLayer(
                   markers: [
@@ -178,8 +452,16 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
             ),
           ),
 
+          // 検索候補ドロップダウン
+          if (_showSearchResults && _searchResults.isNotEmpty)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 52,
+              left: 62, right: 12,
+              child: _buildSearchResultsList(),
+            ),
+
           // Center hint
-          if (_picked == null)
+          if (_picked == null && !_showSearchResults)
             Center(
               child: IgnorePointer(
                 child: Container(
@@ -232,9 +514,31 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                     style: TextStyle(fontSize: 13),
                     textInputAction: TextInputAction.search,
                     onSubmitted: _searchPlace,
-                    decoration: InputDecoration(hintText: '地名を入力してEnter...', hintStyle: TextStyle(fontSize: 13, color: AppColors.textHint), border: InputBorder.none, fillColor: Colors.transparent, filled: false, contentPadding: EdgeInsets.zero),
+                    onChanged: _onSearchChanged,
+                    decoration: InputDecoration(
+                      hintText: '場所・お店の名前を検索...',
+                      hintStyle: TextStyle(fontSize: 13, color: AppColors.textHint),
+                      border: InputBorder.none,
+                      fillColor: Colors.transparent,
+                      filled: false,
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
                 ),
+                if (_searchCtrl.text.isNotEmpty)
+                  GestureDetector(
+                    onTap: () {
+                      _searchCtrl.clear();
+                      setState(() {
+                        _searchResults = [];
+                        _showSearchResults = false;
+                      });
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.only(right: 4),
+                      child: Icon(Icons.clear, size: 18, color: AppColors.textHint),
+                    ),
+                  ),
                 if (_isSearching)
                   const Padding(padding: EdgeInsets.only(right: 12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
                 else
@@ -243,6 +547,66 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 検索結果候補リスト
+  Widget _buildSearchResultsList() {
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(16),
+      color: Colors.white,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: ListView.separated(
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: _searchResults.length,
+          separatorBuilder: (_, __) => Divider(height: 1, color: AppColors.border, indent: 56),
+          itemBuilder: (_, i) {
+            final place = _searchResults[i];
+            return ListTile(
+              dense: true,
+              leading: Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  _placeIcon(place.category, place.type),
+                  size: 18,
+                  color: AppColors.primary,
+                ),
+              ),
+              title: Text(
+                place.name,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                place.fullName,
+                style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryVeryLight,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '選択',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.primary),
+                ),
+              ),
+              onTap: () => _selectSearchResult(place),
+            );
+          },
+        ),
       ),
     );
   }
@@ -304,6 +668,13 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
               _buildNoPinMessage()
             else
               _buildPickedInfo(_picked!),
+
+            // 周辺POI候補
+            if (_picked != null && (_nearbyPlaces.isNotEmpty || _loadingNearby)) ...[
+              const SizedBox(height: 12),
+              _buildNearbyPlacesSection(),
+            ],
+
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity, height: 52,
@@ -323,6 +694,96 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     );
   }
 
+  /// 周辺POI候補セクション
+  Widget _buildNearbyPlacesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.store, size: 14, color: AppColors.primaryDark),
+            const SizedBox(width: 5),
+            Text(
+              'この付近の場所・お店',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primaryDark),
+            ),
+            const Spacer(),
+            if (_loadingNearby)
+              const SizedBox(
+                width: 14, height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_nearbyPlaces.isEmpty && !_loadingNearby)
+          Text(
+            '付近に登録された場所が見つかりませんでした',
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          )
+        else
+          SizedBox(
+            height: 42,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _nearbyPlaces.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, i) {
+                final place = _nearbyPlaces[i];
+                final isSelected = _selectedPlace == place;
+                return GestureDetector(
+                  onTap: () => _selectPlace(place),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.primary : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected ? AppColors.primary : AppColors.border,
+                        width: isSelected ? 2 : 1,
+                      ),
+                      boxShadow: isSelected
+                          ? [BoxShadow(color: AppColors.primary.withValues(alpha: 0.25), blurRadius: 8, offset: const Offset(0, 2))]
+                          : [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _placeIcon(place.category, place.type),
+                          size: 16,
+                          color: isSelected ? Colors.white : AppColors.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 140),
+                          child: Text(
+                            place.name,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isSelected ? Colors.white : AppColors.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isSelected) ...[
+                          const SizedBox(width: 4),
+                          Icon(Icons.check_circle, size: 14, color: Colors.white),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildNoPinMessage() {
     return Container(
       width: double.infinity, padding: const EdgeInsets.all(16),
@@ -332,7 +793,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('まだ場所が選択されていません', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-          Text('マップ上の好きな場所をタップしてピンを立てましょう', style: TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.4)),
+          Text('マップ上の好きな場所をタップするか、\n検索バーで場所・お店を検索してください', style: TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.4)),
         ])),
       ]),
     );
@@ -346,12 +807,22 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
         Container(width: 44, height: 44, decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle, boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3))]), child: const Icon(Icons.location_on, size: 24, color: Colors.white)),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('ピン位置を選択しました ✓', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primaryDark)),
-          const SizedBox(height: 3),
-          Text(_formatLatLng(ll), style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          if (_selectedPlace != null) ...[
+            Text(_selectedPlace!.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primaryDark), maxLines: 1, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 2),
+            Text(_formatLatLng(ll), style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+          ] else ...[
+            Text('ピン位置を選択しました ✓', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primaryDark)),
+            const SizedBox(height: 3),
+            Text(_formatLatLng(ll), style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          ],
         ])),
         GestureDetector(
-          onTap: () => setState(() => _picked = null),
+          onTap: () => setState(() {
+            _picked = null;
+            _selectedPlace = null;
+            _nearbyPlaces = [];
+          }),
           child: Container(width: 28, height: 28, decoration: BoxDecoration(color: AppColors.textHint.withValues(alpha: 0.2), shape: BoxShape.circle), child: const Icon(Icons.close, size: 14, color: AppColors.textSecondary)),
         ),
       ]),
@@ -363,4 +834,24 @@ class _QuickSpot {
   final String name;
   final LatLng latLng;
   const _QuickSpot(this.name, this.latLng);
+}
+
+class _PlaceResult {
+  final String name;
+  final String fullName;
+  final double lat;
+  final double lng;
+  final String type;
+  final String category;
+  final bool isReverseGeocode;
+
+  const _PlaceResult({
+    required this.name,
+    required this.fullName,
+    required this.lat,
+    required this.lng,
+    required this.type,
+    required this.category,
+    this.isReverseGeocode = false,
+  });
 }
