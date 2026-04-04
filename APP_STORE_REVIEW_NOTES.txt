@@ -7,9 +7,9 @@ Version: 1.0.3
 
 Review Notes (paste into App Store Connect):
 "
-- LINE and Google login are displayed as "Coming Soon" and are intentionally
-  non-functional in this version. Apple Sign-In is the only active login method.
-  LINE and Google OAuth will be activated in a future update.
+- Apple Sign-In is the only login method in this version.
+  LINE and Google login options are not displayed in the UI.
+  Additional login providers may be added in a future update.
 - The app uses a monthly auto-renewable subscription (500 JPY/month).
   A "Restore Purchases" button is available on the paywall screen.
 - UGC report and block features are available via the 3-dot menu on any post.
@@ -76,7 +76,7 @@ Ensure you set the Privacy Policy URL in App Store Connect:
 [x] iPad multitasking support (UIRequiresFullScreen = false)
 [x] UGC report & block with local Hive persistence
 [x] Apple-required subscription disclaimer on Paywall screen
-[x] LINE/Google login disabled with "Coming Soon" label
+[x] LINE/Google login buttons removed from UI (Apple Sign-In only)
 [x] No exposed API keys in Info.plist
 [x] flutter analyze: 0 issues
 [ ] App Store Connect metadata (screenshots, titles, keywords)

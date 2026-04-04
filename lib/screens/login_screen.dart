@@ -458,23 +458,6 @@ class _LoginScreenState extends State<LoginScreen>
             provider: 'apple',
             onTap: () => _onAppleSignIn(context),
           ),
-          const SizedBox(height: 12),
-
-          // LINE (Coming Soon)
-          _buildComingSoonButton(
-            label: 'LINEでログイン',
-            color: const Color(0xFF06C755),
-          ),
-          const SizedBox(height: 12),
-
-          // Google (Coming Soon)
-          _buildComingSoonButton(
-            label: 'Googleでログイン',
-            color: Colors.white,
-            textColor: AppColors.textPrimary,
-            hasBorder: true,
-          ),
-
           const SizedBox(height: 20),
 
           Center(
@@ -587,55 +570,4 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  /// Disabled "Coming Soon" button for social logins not yet implemented.
-  /// Apple guideline: stub login must not pretend to work.
-  Widget _buildComingSoonButton({
-    required String label,
-    required Color color,
-    Color textColor = Colors.white,
-    bool hasBorder = false,
-  }) {
-    return Opacity(
-      opacity: 0.45,
-      child: Container(
-        height: 52,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(14),
-          border: hasBorder ? Border.all(color: AppColors.border, width: 1.5) : null,
-        ),
-        child: Center(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: textColor,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: textColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Coming Soon',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: textColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
