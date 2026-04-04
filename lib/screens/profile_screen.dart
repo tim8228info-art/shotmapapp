@@ -96,6 +96,28 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
   }
 
+  Future<void> _openSubscriptionManagement(BuildContext context) async {
+    // Apple guideline 3.1.2: Must provide subscription management link
+    // Opens iOS Settings > Apple ID > Subscriptions
+    final uri = Uri.parse('https://apps.apple.com/account/subscriptions');
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text(
+            '「設定」→「Apple ID」→「サブスクリプション」から管理できます',
+            style: TextStyle(fontSize: 13),
+          ),
+          backgroundColor: AppColors.primary,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ));
+      }
+    }
+  }
+
   void _openEditScreen(BuildContext context) {
     Navigator.of(context).push(PageRouteBuilder(
       pageBuilder: (_, __, ___) => const EditProfileScreen(),
@@ -603,6 +625,14 @@ class _ProfileScreenState extends State<ProfileScreen>
                 iconColor: const Color(0xFF00897B),
                 title: 'プライバシーポリシー',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyScreen())),
+              ),
+              const Divider(height: 1, indent: 56, color: Color(0xFFEEF3F6)),
+              _legalListTile(
+                context: context,
+                icon: Icons.card_membership,
+                iconColor: const Color(0xFF1565C0),
+                title: 'サブスクリプション管理',
+                onTap: () => _openSubscriptionManagement(context),
               ),
             ],
           ),

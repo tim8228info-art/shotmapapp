@@ -432,25 +432,29 @@ class PaywallScreen extends StatelessWidget {
   }
 
   Widget _buildFooterLinks(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 0,
       children: [
         GestureDetector(
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const PrivacyScreen()),
           ),
-          child: const Text(
-            'プライバシーポリシー',
-            style: TextStyle(
-              fontSize: 12,
-              color: _textGray,
-              decoration: TextDecoration.underline,
-              decorationColor: _textGray,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Text(
+              'プライバシーポリシー',
+              style: TextStyle(
+                fontSize: 12,
+                color: _textGray,
+                decoration: TextDecoration.underline,
+                decorationColor: _textGray,
+              ),
             ),
           ),
         ),
         const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12),
+          padding: EdgeInsets.symmetric(horizontal: 2),
           child: Text(
             '・',
             style: TextStyle(fontSize: 12, color: _textGray),
@@ -460,13 +464,16 @@ class PaywallScreen extends StatelessWidget {
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const TermsScreen()),
           ),
-          child: const Text(
-            'Shot Map 利用規約',
-            style: TextStyle(
-              fontSize: 12,
-              color: _textGray,
-              decoration: TextDecoration.underline,
-              decorationColor: _textGray,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Text(
+              '利用規約 (EULA)',
+              style: TextStyle(
+                fontSize: 12,
+                color: _textGray,
+                decoration: TextDecoration.underline,
+                decorationColor: _textGray,
+              ),
             ),
           ),
         ),

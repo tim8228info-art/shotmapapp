@@ -47,8 +47,7 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>現在地周辺の絶景・グルメスポットをマップ上に表示し、スポットへのルート案内や投稿時の位置情報登録に使用します。位置情報はアプリ使用中のみ取得します。</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>現在地周辺の絶景・グルメスポットをマップ上に表示し、スポットへのルート案内や投稿時の位置情報登録に使用します。位置情報はアプリ使用中のみ取得します。</string>
+	<!-- NSLocationAlwaysAndWhenInUseUsageDescription removed: app only uses WhenInUse -->
 	<key>NSCameraUsageDescription</key>
 	<string>スポットの写真を撮影してピンに添付・投稿するためにカメラを使用します。撮影した写真はShotMapのスポット情報として共有されます。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
