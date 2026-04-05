@@ -7,6 +7,7 @@ import '../main_shell.dart';
 import '../models/user_profile_provider.dart';
 import '../services/subscription_service.dart';
 import '../services/apple_sign_in_service.dart';
+import '../services/google_sign_in_service.dart';
 import 'paywall_screen.dart';
 import 'terms_screen.dart';
 import 'privacy_screen.dart';
@@ -239,6 +240,121 @@ class _LoginScreenState extends State<LoginScreen>
               child: const Text('もう一度試す'),
             ),
         ],
+      ),
+    );
+  }
+
+  // ─── Google Sign In ───
+  Future<void> _onGoogleSignIn(BuildContext context) async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+      _loadingProvider = 'google';
+    });
+
+    try {
+      final result = await GoogleSignInService.signIn();
+
+      if (!mounted) return;
+
+      if (result.success) {
+        await _completeSocialLogin(
+          context: this.context,
+          provider: 'google',
+          displayName: result.displayName,
+          email: result.email.isNotEmpty ? result.email : null,
+        );
+
+        // Update avatar with Google profile photo if available
+        if (result.photoUrl.isNotEmpty && mounted) {
+          final profileProvider = this.context.read<UserProfileProvider>();
+          profileProvider.updateAvatar(result.photoUrl);
+        }
+      } else if (result.isCanceled) {
+        // User canceled - do nothing
+        if (kDebugMode) {
+          debugPrint('[Login] Google Sign In canceled by user');
+        }
+      } else {
+        _showSignInErrorDialog(
+          result.errorMessage ?? '認証エラーが発生しました',
+          onRetry: () => _onGoogleSignIn(context),
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[Login] Google Sign In unexpected error: $e');
+      }
+      if (mounted) {
+        _showSignInErrorDialog(
+          '接続エラーが発生しました。\nネットワーク接続を確認してもう一度お試しください。',
+          onRetry: () => _onGoogleSignIn(context),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadingProvider = null;
+        });
+      }
+    }
+  }
+
+  /// Google brand guideline compliant button.
+  /// White background, Google "G" logo, and Japanese text.
+  Widget _buildGoogleSignInButton(BuildContext context) {
+    final isCurrentLoading = _isLoading && _loadingProvider == 'google';
+    final isDisabled = _isLoading && !isCurrentLoading;
+
+    return GestureDetector(
+      onTap: isDisabled ? null : () => _onGoogleSignIn(context),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 200),
+        opacity: isDisabled ? 0.5 : 1.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: 52,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 1.5),
+          ),
+          child: Center(
+            child: isCurrentLoading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Color(0xFF4285F4),
+                    ),
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Google "G" logo (SVG-accurate colors)
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CustomPaint(
+                          painter: _GoogleLogoPainter(),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Googleでログイン',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF3C4043),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
       ),
     );
   }
@@ -552,6 +668,10 @@ class _LoginScreenState extends State<LoginScreen>
             provider: 'apple',
             onTap: () => _onAppleSignIn(context),
           ),
+          const SizedBox(height: 12),
+
+          // Google Sign In
+          _buildGoogleSignInButton(context),
           const SizedBox(height: 20),
 
           Center(
@@ -663,5 +783,75 @@ class _LoginScreenState extends State<LoginScreen>
       ),
     );
   }
+}
 
+/// Custom painter that draws the official Google "G" logo.
+/// Follows Google branding guidelines with the four-color mark.
+class _GoogleLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double w = size.width;
+    final double h = size.height;
+    final double cx = w / 2;
+    final double cy = h / 2;
+    final double r = w * 0.45;
+
+    // Draw a simplified Google "G" logo using arcs
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.18
+      ..strokeCap = StrokeCap.butt;
+
+    // Blue arc (right portion / top-right)
+    paint.color = const Color(0xFF4285F4);
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      -0.4, // start angle
+      -2.2, // sweep angle (counterclockwise)
+      false,
+      paint,
+    );
+
+    // Green arc (bottom-left)
+    paint.color = const Color(0xFF34A853);
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      2.1,
+      1.0,
+      false,
+      paint,
+    );
+
+    // Yellow arc (bottom)
+    paint.color = const Color(0xFFFBBC05);
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      1.1,
+      1.0,
+      false,
+      paint,
+    );
+
+    // Red arc (top-left)
+    paint.color = const Color(0xFFEA4335);
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      -2.6,
+      1.0,
+      false,
+      paint,
+    );
+
+    // Horizontal bar of the "G" (blue)
+    final barPaint = Paint()
+      ..color = const Color(0xFF4285F4)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(
+      Rect.fromLTWH(cx - w * 0.02, cy - h * 0.08, w * 0.48, h * 0.16),
+      barPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

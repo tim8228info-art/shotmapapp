@@ -60,5 +60,22 @@
 	<false/>
 	<key>UISupportsDocumentBrowser</key>
 	<false/>
+	<!-- Google Sign-In URL Scheme (reversed client ID from GoogleService-Info.plist) -->
+	<!-- IMPORTANT: Replace this with your actual reversed client ID from Firebase Console.
+	     Go to: Firebase Console → Project settings → iOS app → GoogleService-Info.plist
+	     Find the REVERSED_CLIENT_ID value and paste it below.
+	     Format: com.googleusercontent.apps.{your-client-id} -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- TODO: Replace with your REVERSED_CLIENT_ID from GoogleService-Info.plist -->
+				<string>com.googleusercontent.apps.123107533000-your-ios-client-id</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
