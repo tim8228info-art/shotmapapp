@@ -21,11 +21,19 @@
 
   <!--
     Google Maps JavaScript API
-    - v=weekly : 安定版（v=beta は新 Dynamic Import 方式になりDart interop非対応）
+    google_maps_flutter_web (0.5.14) + google_maps (8.2.0) の要件:
+    - バージョン指定なし（デフォルト stable）
     - libraries=places : Places Autocomplete に必要
-    - loading=async は使わない（Dart JS interop はブロッキングロードが必要）
+    - loading= パラメータは指定しない（Dart JS interop が同期アクセスするため）
+    参照: https://pub.dev/packages/google_maps_flutter_web#modify-webindexhtml
   -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB8bm3RjpQ29OAw92YZiyaT7t23jQQFoJA&libraries=places&v=weekly"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB8bm3RjpQ29OAw92YZiyaT7t23jQQFoJA&libraries=places"></script>
+
+  <!--
+    Marker Clusterer (google_maps_flutter_web がクラスタリング機能で必要)
+    バージョン 2.5.3 固定（公式 README 指定）
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/@googlemaps/markerclusterer@2.5.3/dist/index.umd.min.js"></script>
 
   <!-- Firebase JS SDK (required for Firebase Auth on Web) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>

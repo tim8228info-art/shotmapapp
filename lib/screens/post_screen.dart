@@ -2,7 +2,6 @@ import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../theme/app_theme.dart';
 import '../models/data_models.dart';
 import 'map_picker_screen.dart';
@@ -38,6 +37,7 @@ class _PostScreenState extends State<PostScreen> {
   // true = 現在地GPS, false = マップから選択
   bool _useCurrentLocation = true;
   LatLng? _pickedLocation; // マップ選択時の座標
+  String? _pickedLocationName; // 選択した場所の名称（スポット名または任意名）
   bool _locationConfirmed = false; // 現在地取得済みフラグ（疑似）
 
   final List<String> _prefectures = [
@@ -1338,6 +1338,7 @@ class _PostScreenState extends State<PostScreen> {
   Widget _buildMapPickerSelected(LatLng ll) {
     final latStr = ll.latitude.toStringAsFixed(5);
     final lngStr = ll.longitude.toStringAsFixed(5);
+    final hasName = _pickedLocationName != null && _pickedLocationName!.isNotEmpty;
     return Row(
       children: [
         Container(
@@ -1362,23 +1363,25 @@ class _PostScreenState extends State<PostScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'ピン位置を選択済み ✓',
-                style: TextStyle(
+                hasName ? _pickedLocationName! : 'ピン位置を選択済み ✓',
+                style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: AppColors.primaryDark,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               Text(
                 'N$latStr, E$lngStr',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 11,
                   color: AppColors.textSecondary,
                 ),
               ),
               GestureDetector(
                 onTap: _openMapPicker,
-                child: Text(
+                child: const Text(
                   '変更する →',
                   style: TextStyle(
                     fontSize: 11,
@@ -1391,7 +1394,10 @@ class _PostScreenState extends State<PostScreen> {
           ),
         ),
         GestureDetector(
-          onTap: () => setState(() => _pickedLocation = null),
+          onTap: () => setState(() {
+            _pickedLocation = null;
+            _pickedLocationName = null;
+          }),
           child: Container(
             width: 28,
             height: 28,
@@ -1419,6 +1425,8 @@ class _PostScreenState extends State<PostScreen> {
     if (result != null) {
       setState(() {
         _pickedLocation = result;
+        // 場所名はリセット（新しい選択）
+        _pickedLocationName = null;
       });
     }
   }

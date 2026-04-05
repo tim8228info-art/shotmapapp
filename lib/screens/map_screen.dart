@@ -1,6 +1,6 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
@@ -8,6 +8,13 @@ import '../models/data_models.dart';
 import '../models/user_profile_provider.dart';
 import '../widgets/ugc/report_block_sheet.dart';
 import 'post_screen.dart';
+
+// ── モバイル: Google Maps ──
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
+
+// ── Web: flutter_map (OpenStreetMap) ──
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' as ll;
 
 class MapScreen extends StatefulWidget {
   final MapScreenController? controller;
@@ -26,11 +33,14 @@ class MapScreenController {
 
 class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   SpotPin? _selectedPin;
-  GoogleMapController? _mapController;
 
-  // true = satellite, false = normal map
+  // Google Maps (モバイル)
+  gmaps.GoogleMapController? _gMapController;
+
+  // flutter_map (Web)
+  final MapController _fMapController = MapController();
+
   bool _showSatellite = true;
-
   PinType? _pinTypeFilter;
 
   @override
@@ -41,14 +51,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _mapController?.dispose();
+    _gMapController?.dispose();
     super.dispose();
   }
 
   List<SpotPin> get _filteredPins {
     return SampleData.pins.where((p) {
-      final matchType = _pinTypeFilter == null || p.pinType == _pinTypeFilter;
-      return matchType;
+      return _pinTypeFilter == null || p.pinType == _pinTypeFilter;
     }).toList();
   }
 
@@ -57,27 +66,35 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _selectedPin = _selectedPin?.id == pin.id ? null : pin;
     });
     if (_selectedPin != null) {
-      _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(LatLng(pin.lat, pin.lng), 14.0),
-      );
+      if (kIsWeb) {
+        _fMapController.move(ll.LatLng(pin.lat, pin.lng), 14.0);
+      } else {
+        _gMapController?.animateCamera(
+          gmaps.CameraUpdate.newLatLngZoom(gmaps.LatLng(pin.lat, pin.lng), 14.0),
+        );
+      }
     }
   }
 
   Future<void> _openGoogleMapsNavigation(SpotPin pin) async {
-    final googleMapsUrl = Uri.parse(
+    final url = Uri.parse(
       'https://www.google.com/maps/dir/?api=1'
       '&destination=${pin.lat},${pin.lng}'
       '&travelmode=driving',
     );
-    if (await canLaunchUrl(googleMapsUrl)) {
-      await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
     }
   }
 
   void jumpToLocation(double lat, double lng) {
-    _mapController?.animateCamera(
-      CameraUpdate.newLatLngZoom(LatLng(lat, lng), 14.0),
-    );
+    if (kIsWeb) {
+      _fMapController.move(ll.LatLng(lat, lng), 14.0);
+    } else {
+      _gMapController?.animateCamera(
+        gmaps.CameraUpdate.newLatLngZoom(gmaps.LatLng(lat, lng), 14.0),
+      );
+    }
   }
 
   void _onPinTypeFilterChanged(PinType? type) {
@@ -87,17 +104,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
-  Set<Marker> _buildMarkers() {
+  // ── Google Maps マーカー（モバイル用）──
+  Set<gmaps.Marker> _buildGoogleMarkers() {
     return _filteredPins.map((pin) {
       final isSelected = _selectedPin?.id == pin.id;
       final hue = pin.pinType == PinType.sightseeing
-          ? BitmapDescriptor.hueRed
-          : BitmapDescriptor.hueBlue;
-      return Marker(
-        markerId: MarkerId(pin.id),
-        position: LatLng(pin.lat, pin.lng),
-        icon: BitmapDescriptor.defaultMarkerWithHue(
-          isSelected ? BitmapDescriptor.hueOrange : hue,
+          ? gmaps.BitmapDescriptor.hueRed
+          : gmaps.BitmapDescriptor.hueBlue;
+      return gmaps.Marker(
+        markerId: gmaps.MarkerId(pin.id),
+        position: gmaps.LatLng(pin.lat, pin.lng),
+        icon: gmaps.BitmapDescriptor.defaultMarkerWithHue(
+          isSelected ? gmaps.BitmapDescriptor.hueOrange : hue,
         ),
         onTap: () => _onPinTap(pin),
         zIndexInt: isSelected ? 2 : 1,
@@ -111,26 +129,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          // ── Google Map ──
-          GoogleMap(
-            initialCameraPosition: const CameraPosition(
-              target: LatLng(36.5, 137.0),
-              zoom: 6.0,
-            ),
-            mapType: _showSatellite ? MapType.satellite : MapType.normal,
-            markers: _buildMarkers(),
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            compassEnabled: true,
-            onMapCreated: (controller) {
-              _mapController = controller;
-            },
-            onTap: (_) {
-              if (_selectedPin != null) {
-                setState(() => _selectedPin = null);
-              }
-            },
-          ),
+          // ── マップ本体 ──
+          kIsWeb ? _buildFlutterMap() : _buildGoogleMap(),
 
           // ── フィルターチップ ──
           SafeArea(
@@ -170,50 +170,124 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           Positioned(
             bottom: _selectedPin == null ? 160 : 260,
             right: 20,
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    setState(() => _showSatellite = !_showSatellite);
-                  },
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      _showSatellite ? Icons.map_outlined : Icons.satellite_alt,
-                      size: 20,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _showSatellite ? '地図' : '航空',
-                    style: const TextStyle(color: Colors.white, fontSize: 9),
-                  ),
-                ),
-              ],
-            ),
+            child: _buildSatelliteToggle(),
           ),
         ],
       ),
+    );
+  }
+
+  // ── Google Maps ウィジェット（iOS / Android）──
+  Widget _buildGoogleMap() {
+    return gmaps.GoogleMap(
+      initialCameraPosition: const gmaps.CameraPosition(
+        target: gmaps.LatLng(36.5, 137.0),
+        zoom: 6.0,
+      ),
+      mapType: _showSatellite ? gmaps.MapType.satellite : gmaps.MapType.normal,
+      markers: _buildGoogleMarkers(),
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      compassEnabled: true,
+      onMapCreated: (c) => _gMapController = c,
+      onTap: (_) {
+        if (_selectedPin != null) setState(() => _selectedPin = null);
+      },
+    );
+  }
+
+  // ── flutter_map ウィジェット（Web プレビュー）──
+  Widget _buildFlutterMap() {
+    return FlutterMap(
+      mapController: _fMapController,
+      options: MapOptions(
+        initialCenter: const ll.LatLng(36.5, 137.0),
+        initialZoom: 6.0,
+        onTap: (_, __) {
+          if (_selectedPin != null) setState(() => _selectedPin = null);
+        },
+      ),
+      children: [
+        // タイルレイヤー（衛星 or 標準）
+        TileLayer(
+          urlTemplate: _showSatellite
+              ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+              : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.shotmap.pins',
+          maxZoom: 19,
+        ),
+        // ピンマーカー（元デザイン: 円形コンテナ＋絵文字）
+        MarkerLayer(
+          markers: _filteredPins.map((pin) {
+            final isSelected = _selectedPin?.id == pin.id;
+            return Marker(
+              point: ll.LatLng(pin.lat, pin.lng),
+              width: isSelected ? 48 : 38,
+              height: isSelected ? 48 : 38,
+              child: GestureDetector(
+                onTap: () => _onPinTap(pin),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.white
+                        : (pin.pinType == PinType.sightseeing
+                            ? const Color(0xFFE53935)
+                            : const Color(0xFF1565C0)),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected
+                          ? const Color(0xFFE53935)
+                          : Colors.white,
+                      width: 2.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      pin.pinType == PinType.sightseeing ? '🏔' : '🍴',
+                      style: TextStyle(fontSize: isSelected ? 20 : 16),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSatelliteToggle() {
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: () => setState(() => _showSatellite = !_showSatellite),
+          child: Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 8, offset: const Offset(0, 2))],
+            ),
+            child: Icon(
+              _showSatellite ? Icons.map_outlined : Icons.satellite_alt,
+              size: 20, color: AppColors.primary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+          decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(8)),
+          child: Text(_showSatellite ? '地図' : '航空', style: const TextStyle(color: Colors.white, fontSize: 9)),
+        ),
+      ],
     );
   }
 
@@ -244,28 +318,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         decoration: BoxDecoration(
           color: isSelected ? color : Colors.white,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isSelected ? color : color.withValues(alpha: 0.4),
-            width: isSelected ? 0 : 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isSelected
-                  ? color.withValues(alpha: 0.3)
-                  : AppColors.primaryDark.withValues(alpha: 0.08),
-              blurRadius: isSelected ? 8 : 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          border: Border.all(color: isSelected ? color : color.withValues(alpha: 0.4), width: isSelected ? 0 : 1.5),
+          boxShadow: [BoxShadow(
+            color: isSelected ? color.withValues(alpha: 0.3) : AppColors.primaryDark.withValues(alpha: 0.08),
+            blurRadius: isSelected ? 8 : 4, offset: const Offset(0, 2),
+          )],
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: isSelected ? Colors.white : color,
-          ),
-        ),
+        child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: isSelected ? Colors.white : color)),
       ),
     );
   }
@@ -282,13 +341,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primaryDark.withValues(alpha: 0.15),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+                boxShadow: [BoxShadow(color: AppColors.primaryDark.withValues(alpha: 0.15), blurRadius: 24, offset: const Offset(0, 8))],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -321,14 +374,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(color: pin.pinType.color.withValues(alpha: 0.4)),
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(width: 8, height: 8, decoration: BoxDecoration(color: pin.pinType.color, shape: BoxShape.circle)),
-                                  const SizedBox(width: 4),
-                                  Text(pin.pinType.label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: pin.pinType.color)),
-                                ],
-                              ),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                Container(width: 8, height: 8, decoration: BoxDecoration(color: pin.pinType.color, shape: BoxShape.circle)),
+                                const SizedBox(width: 4),
+                                Text(pin.pinType.label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: pin.pinType.color)),
+                              ]),
                             ),
                             const SizedBox(height: 4),
                             Row(children: [
@@ -339,28 +389,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             const SizedBox(height: 6),
                             Row(children: [
                               Expanded(
-                                child: Wrap(spacing: 6, children: pin.tags.take(2).map((tag) {
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(color: AppColors.tagBlue, borderRadius: BorderRadius.circular(8)),
-                                    child: Text(tag, style: const TextStyle(fontSize: 10, color: AppColors.primary, fontWeight: FontWeight.w600)),
-                                  );
-                                }).toList()),
+                                child: Wrap(spacing: 6, children: pin.tags.take(2).map((tag) => Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(color: AppColors.tagBlue, borderRadius: BorderRadius.circular(8)),
+                                  child: Text(tag, style: const TextStyle(fontSize: 10, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                                )).toList()),
                               ),
                               const SizedBox(width: 8),
                               GestureDetector(
                                 onTap: () {
                                   provider.toggleSavePin(pin);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(isSaved ? '保存を解除しました' : '保存しました ✓', style: const TextStyle(fontSize: 13)),
-                                      backgroundColor: isSaved ? AppColors.textSecondary : AppColors.primary,
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      margin: const EdgeInsets.all(16),
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                    content: Text(isSaved ? '保存を解除しました' : '保存しました ✓', style: const TextStyle(fontSize: 13)),
+                                    backgroundColor: isSaved ? AppColors.textSecondary : AppColors.primary,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    margin: const EdgeInsets.all(16),
+                                    duration: const Duration(seconds: 2),
+                                  ));
                                 },
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
@@ -431,9 +477,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             Positioned(
               top: -12, right: -8,
               child: GestureDetector(
-                onTap: () {
-                  setState(() => _selectedPin = null);
-                },
+                onTap: () => setState(() => _selectedPin = null),
                 child: Container(
                   width: 32, height: 32,
                   decoration: BoxDecoration(
@@ -487,27 +531,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     const shotmapUrl = 'https://shotmap.app';
     final text = '📍 ${pin.title}（${pin.prefecture}）\n\nShotmapで発見しました！\n$shotmapUrl\n#shotmap #写真スポット';
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(children: [
-          Icon(Icons.check_circle, color: Colors.white, size: 16),
-          SizedBox(width: 8),
-          Text('クリップボードにコピーしました', style: TextStyle(fontSize: 13)),
-        ]),
-        backgroundColor: AppColors.primary,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: const Row(children: [
+        Icon(Icons.check_circle, color: Colors.white, size: 16),
+        SizedBox(width: 8),
+        Text('クリップボードにコピーしました', style: TextStyle(fontSize: 13)),
+      ]),
+      backgroundColor: AppColors.primary,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.all(16),
+      duration: const Duration(seconds: 2),
+    ));
   }
 
   Widget _buildPostButton() {
     return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PostScreen()));
-      },
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PostScreen())),
       child: Container(
         width: 64, height: 64,
         decoration: BoxDecoration(
@@ -523,9 +563,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Widget _buildMyLocationButton() {
     return GestureDetector(
       onTap: () {
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLngZoom(const LatLng(35.6762, 139.6503), 12.0),
-        );
+        if (kIsWeb) {
+          _fMapController.move(const ll.LatLng(35.6762, 139.6503), 12.0);
+        } else {
+          _gMapController?.animateCamera(
+            gmaps.CameraUpdate.newLatLngZoom(const gmaps.LatLng(35.6762, 139.6503), 12.0),
+          );
+        }
       },
       child: Container(
         width: 48, height: 48,

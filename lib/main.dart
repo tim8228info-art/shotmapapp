@@ -20,14 +20,15 @@ import 'package:hive_flutter/hive_flutter.dart';
 Widget _resolveWebScreen() {
   final screen = Uri.base.queryParameters['screen'];
   switch (screen) {
-    case 'main':       return const MainShell(initialTab: 0);
+    case 'login':      return const LoginScreen();
     case 'trend':      return const MainShell(initialTab: 1);
     case 'post':       return const PostScreen();
     case 'prefecture': return const MainShell(initialTab: 3);
     case 'profile':    return const MainShell(initialTab: 4);
     case 'paywall':    return const PaywallScreen();
   }
-  return const LoginScreen();
+  // Web プレビューはデフォルトでマップ画面を表示（ログイン不要）
+  return const MainShell(initialTab: 0);
 }
 
 void main() async {

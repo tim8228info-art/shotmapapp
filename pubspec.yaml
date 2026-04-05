@@ -38,9 +38,12 @@ dependencies:
   # Image Picker (avatar change)
   image_picker: ^1.1.2
 
-  # Map (Google Maps SDK)
+  # Map
+  # モバイル(iOS/Android): Google Maps SDK
   google_maps_flutter: ^2.9.0
-  google_maps_flutter_web: ^0.5.10
+  # Web プレビュー: flutter_map (OpenStreetMap) - google_maps_flutter_web はMaps JS API互換問題のため除外
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
 
   # Firebase Core & Auth (Google Sign-In)
   firebase_core: 3.6.0
