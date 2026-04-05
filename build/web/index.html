@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Shot map</title>
+  <meta name="description" content="Shot map - あなたのお気に入りが誰かの最高の景色になる写真スポット共有マップアプリ">
+  <link rel="icon" type="image/png" href="favicon.png">
+  
+  <!-- Leaflet.js for map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Material Icons -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+  <style>
+    /* ─── Reset & Base ─── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    :root {
+      --primary: #5BA4CF;
+      --primary-light: #90C6E8;
+      --primary-dark: #2E7CB8;
+      --primary-very-light: #E3F4FC;
+      --accent: #FF6B9D;
+      --accent-light: #FFB3CC;
+      --bg: #F5FBFF;
+      --surface: #FFFFFF;
+      --text-primary: #1A2B3C;
+      --text-secondary: #6B8499;
+      --text-hint: #ADC3D1;
+      --tag-blue: #DBEEFA;
+      --tag-pink: #FFE4EF;
+      --tag-green: #DDF6E8;
+      --tag-orange: #FFEDD5;
+      --border: #D9EDF8;
+      --nav-height: 64px;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 15px;
+      color: var(--text-primary);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+
+    /* ─── App Container ─── */
+    #app {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      max-width: 480px;
+      margin: 0 auto;
+      background: var(--bg);
+      box-shadow: 0 0 40px rgba(0,0,0,0.15);
+    }
+
+    /* ─── Screen Container ─── */
+    .screen {
+      display: none;
+      flex: 1;
+      overflow: hidden;
+      flex-direction: column;
+    }
+    .screen.active { display: flex; }
+
+    /* ─── Bottom Navigation ─── */
+    #bottom-nav {
+      position: relative;
+      z-index: 100;
+      background: white;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      height: calc(var(--nav-height) + var(--safe-bottom));
+      padding-bottom: var(--safe-bottom);
+      flex-shrink: 0;
+      box-shadow: 0 -4px 16px rgba(46,124,184,0.10);
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 60px;
+      height: 56px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .nav-item .material-icons-round {
+      font-size: 26px;
+      color: var(--text-hint);
+      transition: color 0.15s, transform 0.15s;
+    }
+    .nav-item.active .material-icons-round { color: var(--primary); }
+    .nav-item:active .material-icons-round { transform: scale(0.9); }
+
+    .nav-post-btn {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary-light), var(--primary));
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 5px 14px rgba(91,164,207,0.45);
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .nav-post-btn:active { transform: scale(0.93); box-shadow: 0 2px 8px rgba(91,164,207,0.4); }
+    .nav-post-btn .material-icons-round { font-size: 28px; color: white; }
+
+    /* ─── Scrollable Content ─── */
+    .scroll-content {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+    .scroll-content::-webkit-scrollbar { display: none; }
+
+    /* ─── Cards ─── */
+    .card {
+      background: white;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      box-shadow: 0 3px 12px rgba(46,124,184,0.06);
+      overflow: hidden;
+    }
+
+    /* ─── Tags ─── */
+    .tag {
+      display: inline-block;
+      padding: 4px 10px;
+      background: var(--tag-blue);
+      color: var(--primary);
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 12px;
+      white-space: nowrap;
+    }
+
+    /* ─── Buttons ─── */
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      padding: 14px 24px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: opacity 0.15s, transform 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-primary:active { opacity: 0.85; transform: scale(0.98); }
+    .btn-primary:disabled { opacity: 0.4; }
+
+    /* ─── Chip / Filter ─── */
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 20px;
+      background: white;
+      border: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .chip.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+    .chip .material-icons-round { font-size: 16px; }
+
+    /* ─── Header ─── */
+    .screen-header {
+      background: white;
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    /* ─── Section Title ─── */
+    .section-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ─── Loading Spinner ─── */
+    .spinner {
+      width: 24px; height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Modal / Bottom Sheet ─── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      display: flex;
+      align-items: flex-end;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .modal-overlay.show { opacity: 1; pointer-events: all; }
+
+    .bottom-sheet {
+      width: 100%; max-width: 480px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 24px 24px 0 0;
+      padding: 16px 20px calc(16px + var(--safe-bottom));
+      max-height: 90vh;
+      overflow-y: auto;
+      transform: translateY(100%);
+      transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    }
+    .modal-overlay.show .bottom-sheet { transform: translateY(0); }
+
+    .sheet-handle {
+      width: 40px; height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 0 auto 16px;
+    }
+
+    /* ─── Snackbar ─── */
+    #snackbar {
+      position: fixed;
+      bottom: calc(var(--nav-height) + 20px);
+      left: 50%; transform: translateX(-50%) translateY(20px);
+      background: var(--primary-dark);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      z-index: 2000;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+    #snackbar.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ─── Image ─── */
+    .img-cover {
+      width: 100%; object-fit: cover;
+      background: var(--primary-very-light);
+    }
+
+    /* ─── Avatar ─── */
+    .avatar {
+      border-radius: 50%;
+      background: var(--primary-light);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    /* ─── HOT badge ─── */
+    .hot-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 4px 8px;
+      background: linear-gradient(135deg, #FF6B6B, #FF6B9D);
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 700;
+      color: white;
+    }
+
+    /* ─── Pin badges ─── */
+    .pin-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 8px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .pin-badge.sightseeing {
+      background: rgba(46,125,50,0.12);
+      color: #2E7D32;
+      border: 1px solid rgba(46,125,50,0.3);
+    }
+    .pin-badge.gourmet {
+      background: rgba(212,145,90,0.12);
+      color: #D4915A;
+      border: 1px solid rgba(212,145,90,0.3);
+    }
+
+    /* ─── Tab Bar ─── */
+    .tab-bar {
+      display: flex;
+      background: white;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .tab-item {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 12px 8px;
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--text-hint);
+      cursor: pointer;
+      border-bottom: 2.5px solid transparent;
+      transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tab-item.active {
+      font-weight: 700;
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+    .tab-item .material-icons-round { font-size: 18px; }
+
+    /* ─── Map styles ─── */
+    #map-container {
+      flex: 1;
+      position: relative;
+    }
+    #leaflet-map {
+      width: 100%;
+      height: 100%;
+    }
+    .map-controls {
+      position: absolute;
+      z-index: 500;
+    }
+    .map-filter-bar {
+      top: 10px; left: 0; right: 0;
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      padding: 0 12px;
+      pointer-events: none;
+    }
+    .map-filter-bar .chip { pointer-events: all; }
+
+    .map-fab {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: white;
+      border: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.15s;
+    }
+    .map-fab:active { transform: scale(0.92); }
+    .map-fab .material-icons-round { font-size: 20px; color: var(--primary); }
+
+    .map-post-fab {
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary-light), var(--primary));
+      border: none;
+      box-shadow: 0 5px 14px rgba(91,164,207,0.45);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .map-post-fab .material-icons-round { font-size: 26px; color: white; }
+
+    .map-fab-group {
+      bottom: 24px; right: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: flex-end;
+    }
+
+    .map-type-toggle {
+      bottom: 170px; right: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+    .map-type-label {
+      background: rgba(0,0,0,0.6);
+      color: white;
+      font-size: 9px;
+      padding: 2px 5px;
+      border-radius: 8px;
+    }
+
+    /* Custom Leaflet pin marker */
+    .custom-marker {
+      width: 36px; height: 36px;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+    .custom-marker.sight { background: #E53935; }
+    .custom-marker.gourmet { background: #1565C0; }
+    .custom-marker-inner {
+      width: 22px; height: 22px;
+      background: white;
+      border-radius: 50%;
+      transform: rotate(45deg);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .custom-marker-inner .material-icons-round { font-size: 13px; color: #333; }
+
+    /* Pin detail card */
+    .pin-detail-card {
+      position: absolute;
+      bottom: 20px; left: 12px; right: 12px;
+      z-index: 500;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      overflow: hidden;
+      transform: translateY(20px);
+      opacity: 0;
+      transition: transform 0.3s, opacity 0.3s;
+      pointer-events: none;
+    }
+    .pin-detail-card.show {
+      transform: translateY(0);
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    /* ─── Trend Screen ─── */
+    .hot-scroll { display: flex; gap: 12px; overflow-x: auto; padding: 0 16px 4px; }
+    .hot-scroll::-webkit-scrollbar { display: none; }
+
+    .hot-card {
+      position: relative;
+      width: 160px;
+      height: 150px;
+      border-radius: 18px;
+      overflow: hidden;
+      flex-shrink: 0;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(46,124,184,0.12);
+    }
+    .hot-card img { width: 100%; height: 100%; object-fit: cover; }
+    .hot-card .gradient-overlay {
+      position: absolute; inset: 0;
+      background: linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.8));
+    }
+    .hot-card .card-info {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 10px 10px 10px;
+      color: white;
+    }
+    .hot-card .card-title { font-size: 12px; font-weight: 700; line-height: 1.3; }
+    .hot-card .card-pref { font-size: 10px; opacity: 0.8; margin-top: 3px; }
+
+    .trend-card { margin: 6px 16px; }
+
+    .trend-card-img-wrap {
+      position: relative;
+      height: 160px;
+      overflow: hidden;
+      border-radius: 20px 20px 0 0;
+    }
+    .trend-card-img-wrap img {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+
+    .trend-card-body { padding: 14px; }
+    .trend-card-title { font-size: 16px; font-weight: 700; color: var(--text-primary); margin: 6px 0 4px; }
+    .trend-card-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+    /* ─── Prefecture / Movie Screen ─── */
+    .recommend-card {
+      margin: 6px 16px;
+      background: white;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(46,124,184,0.06);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .recommend-card:active { opacity: 0.85; }
+    .recommend-card-img { width: 100%; height: 160px; object-fit: cover; }
+    .recommend-card-body { padding: 14px; }
+    .recommend-card-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+    .recommend-card-site { font-size: 11px; color: var(--primary); font-weight: 600; margin-bottom: 4px; }
+    .recommend-card-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.6; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .recommend-card-area { font-size: 11px; color: var(--text-hint); display: flex; align-items: center; gap: 3px; }
+    .stars { color: #FFB800; font-size: 12px; }
+
+    /* ─── Genre Tabs (Prefecture Screen) ─── */
+    .genre-tab {
+      flex: 1;
+      padding: 10px 4px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      border-bottom: 3px solid transparent;
+      transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .genre-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .genre-tab .material-icons-round { font-size: 20px; display: block; margin-bottom: 2px; }
+
+    /* ─── Profile Screen ─── */
+    .profile-header {
+      background: linear-gradient(135deg, #B3D9F2, #7BBFE0, #5BA4CF);
+      padding: 60px 20px 20px;
+      color: white;
+    }
+    .profile-avatar-row { display: flex; align-items: center; gap: 14px; }
+    .profile-avatar {
+      width: 76px; height: 76px;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+      object-fit: cover;
+    }
+    .profile-name { font-size: 18px; font-weight: 700; color: white; }
+    .profile-id {
+      display: inline-block;
+      background: rgba(255,255,255,0.22);
+      padding: 2px 8px;
+      border-radius: 8px;
+      font-size: 11px;
+      color: white;
+      font-weight: 600;
+      margin-top: 3px;
+    }
+    .profile-bio { font-size: 12px; color: rgba(255,255,255,0.9); line-height: 1.4; margin-top: 5px; }
+    .profile-edit-btn {
+      margin-top: 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.4);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .stat-row { display: flex; gap: 20px; margin-top: 14px; }
+    .stat-item { text-align: center; }
+    .stat-num { font-size: 18px; font-weight: 800; color: white; }
+    .stat-label { font-size: 11px; color: rgba(255,255,255,0.8); margin-top: 2px; }
+
+    /* SNS buttons */
+    .sns-row { display: flex; gap: 10px; margin: 16px; overflow-x: auto; }
+    .sns-row::-webkit-scrollbar { display: none; }
+    .sns-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: white;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .sns-btn .material-icons-round { font-size: 18px; }
+
+    /* Settings list */
+    .settings-section { background: white; margin: 12px 16px; border-radius: 16px; overflow: hidden; border: 1px solid var(--border); }
+    .settings-item {
+      display: flex;
+      align-items: center;
+      padding: 16px;
+      gap: 12px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.1s;
+    }
+    .settings-item:active { background: var(--bg); }
+    .settings-item + .settings-item { border-top: 1px solid var(--border); }
+    .settings-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .settings-icon .material-icons-round { font-size: 20px; }
+    .settings-label { flex: 1; font-size: 14px; font-weight: 500; color: var(--text-primary); }
+    .settings-chevron { color: var(--text-hint); }
+    .settings-chevron .material-icons-round { font-size: 20px; }
+
+    /* ─── Post Screen ─── */
+    .post-header {
+      background: white;
+      padding: 56px 16px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .post-content { padding: 20px 16px; }
+    
+    .form-group { margin-bottom: 20px; }
+    .form-label { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .form-label .required { color: var(--accent); font-size: 11px; }
+    .form-input {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--primary-very-light);
+      font-size: 15px;
+      font-family: inherit;
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-input:focus { border-color: var(--primary); background: white; }
+
+    .photo-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+    .photo-slot {
+      aspect-ratio: 1;
+      border-radius: 12px;
+      border: 2px dashed var(--border);
+      background: var(--primary-very-light);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .photo-slot img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; }
+    .photo-slot .material-icons-round { font-size: 24px; color: var(--text-hint); }
+
+    .pin-type-row { display: flex; gap: 10px; }
+    .pin-type-btn {
+      flex: 1;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: white;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .pin-type-btn.selected-sight { background: rgba(229,57,53,0.1); border-color: #E53935; color: #E53935; }
+    .pin-type-btn.selected-gourmet { background: rgba(21,101,192,0.1); border-color: #1565C0; color: #1565C0; }
+    .pin-type-btn .material-icons-round { font-size: 20px; }
+
+    /* ─── Login Screen ─── */
+    .login-screen {
+      background: linear-gradient(160deg, #E3F4FC 0%, #B3D9F2 40%, #5BA4CF 100%);
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .login-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 28px 40px;
+    }
+    .login-logo {
+      width: 80px; height: 80px;
+      background: white;
+      border-radius: 22px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+      margin-bottom: 16px;
+    }
+    .login-logo .material-icons-round { font-size: 44px; color: #E53935; }
+    .login-app-name { font-size: 32px; font-weight: 800; color: var(--text-primary); letter-spacing: 1px; }
+    .login-tagline { font-size: 14px; color: var(--text-secondary); text-align: center; margin-top: 8px; line-height: 1.6; }
+
+    .login-illust {
+      width: 100%;
+      max-width: 320px;
+      height: 200px;
+      background: white;
+      border-radius: 24px;
+      margin: 28px 0;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    }
+    .login-illust img { width: 100%; height: 100%; object-fit: cover; }
+
+    .login-btns { width: 100%; display: flex; flex-direction: column; gap: 12px; }
+    .login-btn {
+      width: 100%;
+      padding: 16px;
+      border-radius: 16px;
+      border: none;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: opacity 0.15s, transform 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .login-btn:active { opacity: 0.85; transform: scale(0.98); }
+    .login-btn-apple { background: #1A1A1A; color: white; }
+    .login-btn-guest {
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 14px;
+      text-decoration: underline;
+    }
+
+    /* ─── Paywall Screen ─── */
+    .paywall-screen {
+      background: linear-gradient(180deg, #0B1A2E, #0F2540);
+      min-height: 100%;
+      color: white;
+    }
+    .paywall-content { padding: 40px 28px; }
+    .paywall-feature-row { display: flex; align-items: center; gap: 14px; padding: 4px 0; }
+    .paywall-icon-box {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .paywall-icon-box .material-icons-round { font-size: 22px; color: white; }
+
+    /* ─── User Search ─── */
+    .user-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      background: white;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .user-card:active { background: var(--bg); }
+    .user-card-info { flex: 1; min-width: 0; }
+    .user-card-name { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+    .user-card-id { font-size: 12px; color: var(--text-hint); }
+    .user-card-bio { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+
+    /* ─── Spot type toggle ─── */
+    .spot-type-toggle { display: flex; gap: 8px; padding: 16px 16px 0; }
+    .spot-type-btn {
+      flex: 1;
+      padding: 11px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: white;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .spot-type-btn .material-icons-round { font-size: 16px; }
+    .spot-type-btn.active-sight {
+      background: #2E7D32; border-color: #2E7D32; color: white;
+      box-shadow: 0 3px 8px rgba(46,125,50,0.3);
+    }
+    .spot-type-btn.active-gourmet {
+      background: #D4915A; border-color: #D4915A; color: white;
+      box-shadow: 0 3px 8px rgba(212,145,90,0.3);
+    }
+
+    /* ─── Empty state ─── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 20px;
+      text-align: center;
+    }
+    .empty-state .material-icons-round { font-size: 56px; color: var(--text-hint); margin-bottom: 16px; }
+    .empty-state-title { font-size: 16px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
+    .empty-state-text { font-size: 13px; color: var(--text-hint); line-height: 1.6; }
+
+    /* ─── Pref Filter ─── */
+    .pref-filter-bar { background: white; padding: 8px 16px 10px; border-bottom: 1px solid var(--border); }
+    .pref-select-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 12px;
+      border-radius: 20px;
+      background: var(--primary-very-light);
+      border: 1px solid var(--primary-light);
+      font-size: 13px; font-weight: 600; color: var(--primary);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .pref-select-btn .material-icons-round { font-size: 14px; }
+
+    .region-scroll { display: flex; gap: 8px; overflow-x: auto; margin-top: 8px; }
+    .region-scroll::-webkit-scrollbar { display: none; }
+    .region-chip {
+      padding: 6px 14px;
+      border-radius: 16px;
+      background: white;
+      border: 1px solid var(--border);
+      font-size: 12px; font-weight: 600; color: var(--text-secondary);
+      cursor: pointer; white-space: nowrap; flex-shrink: 0;
+      transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .region-chip.active { background: var(--primary); border-color: var(--primary); color: white; }
+
+    /* ─── Pref Sheet ─── */
+    .pref-section-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); padding: 10px 0 8px; }
+    .pref-chips-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+    .pref-chip {
+      padding: 8px 14px;
+      border-radius: 20px;
+      background: white;
+      border: 1px solid var(--border);
+      font-size: 13px; font-weight: 600; color: var(--text-primary);
+      cursor: pointer;
+      transition: all 0.15s;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .pref-chip.selected { background: linear-gradient(135deg, var(--primary-light), var(--primary)); color: white; border-color: var(--primary); }
+
+    /* ─── Save Button on cards ─── */
+    .save-btn {
+      position: absolute; top: 10px; right: 10px;
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.45);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .save-btn .material-icons-round { font-size: 18px; color: white; }
+    .save-btn.saved .material-icons-round { color: #FFD700; }
+
+    /* ─── Profile tabs ─── */
+    .profile-tab-content { padding: 16px; }
+
+    /* Saved items grid */
+    .saved-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .saved-card { border-radius: 16px; overflow: hidden; background: white; border: 1px solid var(--border); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .saved-card:active { opacity: 0.85; }
+    .saved-card-img { width: 100%; height: 100px; object-fit: cover; }
+    .saved-card-body { padding: 10px; }
+    .saved-card-title { font-size: 13px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .saved-card-pref { font-size: 11px; color: var(--text-hint); margin-top: 3px; }
+
+    /* Follow list */
+    .follow-item { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .follow-item:last-child { border-bottom: none; }
+    .follow-item:active { opacity: 0.8; }
+    .follow-item-info { flex: 1; }
+    .follow-item-name { font-size: 14px; font-weight: 700; }
+    .follow-item-id { font-size: 12px; color: var(--text-hint); }
+    .follow-btn {
+      padding: 6px 14px;
+      border-radius: 14px;
+      background: var(--primary);
+      color: white;
+      font-size: 12px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+    }
+    .follow-btn.following {
+      background: white;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+
+    /* ─── Alert Dialog ─── */
+    .alert-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .alert-overlay.show { opacity: 1; pointer-events: all; }
+    .alert-dialog {
+      background: white;
+      border-radius: 20px;
+      padding: 24px;
+      width: 100%; max-width: 340px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+      transform: scale(0.95);
+      transition: transform 0.2s;
+    }
+    .alert-overlay.show .alert-dialog { transform: scale(1); }
+    .alert-title { font-size: 17px; font-weight: 800; margin-bottom: 10px; }
+    .alert-body { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+    .alert-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+    .alert-btn { padding: 10px 18px; border-radius: 12px; font-size: 14px; font-weight: 700; border: none; cursor: pointer; font-family: inherit; }
+    .alert-btn-cancel { background: var(--bg); color: var(--text-secondary); }
+    .alert-btn-ok { background: var(--primary); color: white; }
+    .alert-btn-danger { background: #E53935; color: white; }
+
+    /* ─── Safe area top ─── */
+    .safe-top { padding-top: env(safe-area-inset-top, 44px); }
+    
+    /* Subtle gradient background for screens */
+    .section-header {
+      padding: 16px 16px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* ─── Responsive ─── */
+    @media (min-width: 480px) {
+      #app { border-radius: 0; }
+    }
+
+    /* ─── Animation ─── */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in-up { animation: fadeInUp 0.3s ease forwards; }
+
+    /* Rating stars */
+    .rating { display: flex; align-items: center; gap: 4px; }
+    .rating-stars { color: #FFB800; font-size: 13px; letter-spacing: -1px; }
+    .rating-num { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
+
+    /* ─── Map type label ─── */
+    .layer-label {
+      position: absolute;
+      bottom: calc(100% + 2px);
+      left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.6);
+      color: white;
+      font-size: 9px;
+      padding: 2px 5px;
+      border-radius: 6px;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- ══════════════════════════════════════════
+       LOGIN SCREEN
+  ══════════════════════════════════════════ -->
+  <div id="screen-login" class="screen active">
+    <div class="scroll-content login-screen">
+      <div class="login-content">
+        <div class="login-logo">
+          <span class="material-icons-round" style="font-size:44px;color:#E53935">location_on</span>
+        </div>
+        <div class="login-app-name">Shot map</div>
+        <div class="login-tagline">あなたのお気に入りが<br>誰かの最高の景色になる</div>
+
+        <div class="login-illust">
+          <img src="https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=640" alt="Shot map illustration" style="width:100%;height:100%;object-fit:cover;">
+        </div>
+
+        <div class="login-btns">
+          <button class="login-btn login-btn-apple" onclick="App.loginAsGuest()">
+            <span class="material-icons-round" style="font-size:22px">apple</span>
+            Appleでサインイン
+          </button>
+          <button class="login-btn login-btn-guest" onclick="App.loginAsGuest()">
+            ゲストとして続ける
+          </button>
+        </div>
+
+        <p style="font-size:11px;color:var(--text-hint);text-align:center;margin-top:20px;line-height:1.7;">
+          続けることで<span style="color:var(--primary);font-weight:600;cursor:pointer" onclick="App.openTerms()">利用規約</span>と
+          <span style="color:var(--primary);font-weight:600;cursor:pointer" onclick="App.openPrivacy()">プライバシーポリシー</span>に同意したことになります
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       PAYWALL SCREEN
+  ══════════════════════════════════════════ -->
+  <div id="screen-paywall" class="screen">
+    <div class="scroll-content paywall-screen">
+      <div class="paywall-content">
+        <div style="text-align:center;margin-bottom:24px">
+          <div style="width:80px;height:80px;background:white;border-radius:20px;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(0,0,0,0.3);margin-bottom:16px">
+            <span class="material-icons-round" style="font-size:44px;color:#E53935">location_on</span>
+          </div>
+          <div style="font-size:32px;font-weight:800;color:white;letter-spacing:0.5px">Shot Map</div>
+          <div style="font-size:14px;color:#8DA4BE;margin-top:8px;line-height:1.5">すべての機能を月額500円でご利用いただけます</div>
+        </div>
+
+        <!-- Feature card -->
+        <div style="background:#132A45;border-radius:18px;border:1px solid rgba(255,255,255,0.06);padding:20px;margin-bottom:20px">
+          <div class="paywall-feature-row" style="margin-bottom:18px">
+            <div class="paywall-icon-box" style="background:#1E88E5"><span class="material-icons-round">location_on</span></div>
+            <div><div style="font-size:15px;font-weight:700;color:white">スポット無制限保存</div><div style="font-size:12px;color:#8DA4BE;margin-top:2px">お気に入りの場所をいくつでも記録</div></div>
+          </div>
+          <div class="paywall-feature-row" style="margin-bottom:18px">
+            <div class="paywall-icon-box" style="background:#E91E63"><span class="material-icons-round">camera_alt</span></div>
+            <div><div style="font-size:15px;font-weight:700;color:white">写真付きで投稿・共有</div><div style="font-size:12px;color:#8DA4BE;margin-top:2px">風景・グルメ写真をマップに投稿</div></div>
+          </div>
+          <div class="paywall-feature-row" style="margin-bottom:18px">
+            <div class="paywall-icon-box" style="background:#43A047"><span class="material-icons-round">trending_up</span></div>
+            <div><div style="font-size:15px;font-weight:700;color:white">トレンドスポット発見</div><div style="font-size:12px;color:#8DA4BE;margin-top:2px">世界中のユーザーの投稿をチェック</div></div>
+          </div>
+          <div class="paywall-feature-row">
+            <div class="paywall-icon-box" style="background:#FF9800"><span class="material-icons-round">share</span></div>
+            <div><div style="font-size:15px;font-weight:700;color:white">SNS 共有機能</div><div style="font-size:12px;color:#8DA4BE;margin-top:2px">Instagram・Xで友達にシェア</div></div>
+          </div>
+        </div>
+
+        <!-- Pricing card -->
+        <div style="background:#132A45;border-radius:18px;border:1px solid rgba(255,255,255,0.06);padding:20px;margin-bottom:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <div style="font-size:13px;color:#8DA4BE;font-weight:500">月額プラン</div>
+              <div style="font-size:28px;font-weight:800;color:white;margin-top:4px">¥500<span style="font-size:14px;font-weight:400;color:#8DA4BE">/月</span></div>
+            </div>
+            <div style="background:#1565C0;border-radius:12px;padding:10px 16px;text-align:center">
+              <div style="font-size:12px;color:rgba(255,255,255,0.8)">7日間</div>
+              <div style="font-size:14px;font-weight:800;color:white">無料トライアル</div>
+            </div>
+          </div>
+          <div style="margin-top:14px;font-size:12px;color:#8DA4BE;display:flex;align-items:center;gap:8px">
+            <span class="material-icons-round" style="font-size:16px;color:#4CAF50">check_circle</span>
+            7日間の無料トライアル後、月額¥500が請求されます
+          </div>
+          <div style="font-size:12px;color:#8DA4BE;display:flex;align-items:center;gap:8px;margin-top:6px">
+            <span class="material-icons-round" style="font-size:16px;color:#4CAF50">check_circle</span>
+            いつでもキャンセル可能
+          </div>
+        </div>
+
+        <!-- CTA -->
+        <button class="btn-primary" style="width:100%;padding:18px;font-size:17px;background:#2196F3;border-radius:18px" onclick="App.subscribe()">
+          無料で7日間試す
+        </button>
+
+        <div style="margin-top:14px;background:rgba(19,42,69,0.6);border-radius:12px;padding:14px 16px;font-size:11px;color:#8DA4BE;line-height:1.6">
+          サブスクリプションは確認後、お客様のApple IDアカウントに請求されます。現在の期間が終了する24時間以上前にキャンセルしない限り、サブスクリプションは自動的に更新されます。更新料金は現在の期間終了前の24時間以内に請求されます。購入後、設定アプリからサブスクリプションの管理・キャンセルが可能です。
+        </div>
+
+        <div style="margin-top:14px;display:flex;gap:12px;justify-content:center">
+          <span style="font-size:13px;color:#8DA4BE;cursor:pointer;text-decoration:underline" onclick="App.subscribe()">購入を復元</span>
+        </div>
+
+        <div style="margin-top:16px;display:flex;gap:16px;justify-content:center">
+          <span style="font-size:12px;color:#8DA4BE;cursor:pointer;text-decoration:underline" onclick="App.openTerms()">利用規約</span>
+          <span style="font-size:12px;color:#8DA4BE;cursor:pointer;text-decoration:underline" onclick="App.openPrivacy()">プライバシーポリシー</span>
+          <span style="font-size:12px;color:#8DA4BE;cursor:pointer;text-decoration:underline" onclick="App.openTerms()">EULA</span>
+        </div>
+        <div style="height:20px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       MAIN APP (after login)
+  ══════════════════════════════════════════ -->
+  <div id="screen-main" class="screen" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+    <!-- Tab content area -->
+    <div id="tab-content" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+      <!-- MAP TAB -->
+      <div id="tab-map" class="screen active" style="flex-direction:column">
+        <div id="map-container">
+          <div id="leaflet-map"></div>
+          <!-- Filter chips -->
+          <div class="map-controls map-filter-bar">
+            <div class="chip active" id="filter-all" onclick="MapTab.setFilter('all')">
+              <span class="material-icons-round">location_on</span> すべて
+            </div>
+            <div class="chip" id="filter-sight" onclick="MapTab.setFilter('sightseeing')">
+              <span class="material-icons-round">landscape</span> 風景
+            </div>
+            <div class="chip" id="filter-gourmet" onclick="MapTab.setFilter('gourmet')">
+              <span class="material-icons-round">restaurant</span> グルメ
+            </div>
+          </div>
+          <!-- Right FABs -->
+          <div class="map-controls map-fab-group">
+            <button class="map-post-fab" onclick="App.openPost()">
+              <span class="material-icons-round">add</span>
+            </button>
+            <button class="map-fab" id="map-location-btn" onclick="MapTab.goToMyLocation()" title="現在地">
+              <span class="material-icons-round">my_location</span>
+            </button>
+          </div>
+          <!-- Layer toggle -->
+          <div class="map-controls map-type-toggle">
+            <button class="map-fab" id="layer-btn" onclick="MapTab.toggleLayer()" title="地図切替">
+              <span class="material-icons-round" id="layer-icon">map</span>
+            </button>
+            <div class="map-type-label" id="layer-label">地図</div>
+          </div>
+          <!-- Pin detail card -->
+          <div class="pin-detail-card" id="pin-detail-card">
+            <!-- filled by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- TREND TAB -->
+      <div id="tab-trend" class="screen" style="flex-direction:column">
+        <div class="screen-header safe-top">
+          <!-- Tab bar -->
+          <div class="tab-bar" style="border-bottom:none;margin-top:-4px">
+            <div class="tab-item active" id="trend-tab-spot" onclick="TrendTab.switchTab('spot')">
+              <span class="material-icons-round">auto_awesome</span> スポット
+            </div>
+            <div class="tab-item" id="trend-tab-user" onclick="TrendTab.switchTab('user')">
+              <span class="material-icons-round">person_search</span> ユーザー検索
+            </div>
+          </div>
+        </div>
+        <div class="scroll-content" id="trend-content">
+          <!-- filled by JS -->
+        </div>
+      </div>
+
+      <!-- MOVIE / PREFECTURE TAB -->
+      <div id="tab-movie" class="screen" style="flex-direction:column">
+        <!-- Header -->
+        <div style="background:white;border-bottom:1px solid var(--border);flex-shrink:0">
+          <div class="safe-top" style="padding:10px 16px 8px;display:flex;align-items:center;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:34px;height:34px;background:linear-gradient(135deg,var(--primary-light),var(--primary));border-radius:10px;display:flex;align-items:center;justify-content:center">
+                <span class="material-icons-round" style="color:white;font-size:19px">explore</span>
+              </div>
+              <span style="font-size:16px;font-weight:700;color:var(--text-primary)">都道府県で探す</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <div style="background:var(--primary-very-light);border:1px solid var(--primary-light);border-radius:12px;padding:5px 10px;display:flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--primary)">
+                <span class="material-icons-round" style="font-size:12px">open_in_new</span> 外部サイト
+              </div>
+              <button class="map-fab" onclick="PrefTab.refresh()" title="更新">
+                <span class="material-icons-round" id="pref-refresh-icon">refresh</span>
+              </button>
+            </div>
+          </div>
+          <!-- Pref filter -->
+          <div class="pref-filter-bar">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="pref-select-btn" id="pref-selected-btn" onclick="PrefTab.showPrefSheet()">
+                <span class="material-icons-round">location_on</span>
+                <span id="pref-selected-text">すべての都道府県</span>
+              </div>
+              <div class="chip" onclick="PrefTab.showPrefSheet()" style="padding:7px 12px">
+                <span class="material-icons-round" style="font-size:15px">tune</span>
+                都道府県を選択
+              </div>
+              <button id="pref-clear-btn" onclick="PrefTab.clearPref()" style="display:none;width:28px;height:28px;border-radius:50%;background:var(--border);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center">
+                <span class="material-icons-round" style="font-size:14px;color:var(--text-secondary)">close</span>
+              </button>
+            </div>
+            <div class="region-scroll" id="region-scroll"></div>
+          </div>
+          <!-- Genre tabs -->
+          <div class="tab-bar" style="border-bottom:none">
+            <div class="genre-tab active" id="genre-tab-sight" onclick="PrefTab.switchGenre('sight')">
+              <span class="material-icons-round">photo_camera</span> おすすめ観光地
+            </div>
+            <div class="genre-tab" id="genre-tab-gourmet" onclick="PrefTab.switchGenre('gourmet')">
+              <span class="material-icons-round">restaurant</span> おすすめグルメ
+            </div>
+            <div class="genre-tab" id="genre-tab-hotel" onclick="PrefTab.switchGenre('hotel')">
+              <span class="material-icons-round">hotel</span> おすすめホテル
+            </div>
+          </div>
+        </div>
+        <div class="scroll-content" id="pref-content">
+          <!-- filled by JS -->
+        </div>
+      </div>
+
+      <!-- PROFILE TAB -->
+      <div id="tab-profile" class="screen" style="flex-direction:column">
+        <div class="scroll-content">
+          <!-- Header gradient -->
+          <div class="profile-header safe-top" id="profile-header-area">
+            <!-- filled by JS -->
+          </div>
+          <!-- Sub tab bar -->
+          <div class="tab-bar" id="profile-tab-bar">
+            <div class="tab-item active" id="ptab-profile" onclick="ProfileTab.switchTab('profile')">プロフィール</div>
+            <div class="tab-item" id="ptab-saved" onclick="ProfileTab.switchTab('saved')">保存済み</div>
+            <div class="tab-item" id="ptab-follow" onclick="ProfileTab.switchTab('follow')">フォロー</div>
+          </div>
+          <!-- Content -->
+          <div id="profile-content">
+            <!-- filled by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <nav id="bottom-nav">
+      <div class="nav-item active" id="nav-map" onclick="App.switchTab(0)">
+        <span class="material-icons-round">map</span>
+      </div>
+      <div class="nav-item" id="nav-trend" onclick="App.switchTab(1)">
+        <span class="material-icons-round">auto_awesome</span>
+      </div>
+      <div class="nav-post-btn" onclick="App.openPost()">
+        <span class="material-icons-round">add</span>
+      </div>
+      <div class="nav-item" id="nav-movie" onclick="App.switchTab(3)">
+        <span class="material-icons-round">location_city</span>
+      </div>
+      <div class="nav-item" id="nav-profile" onclick="App.switchTab(4)">
+        <span class="material-icons-round">person</span>
+      </div>
+    </nav>
+  </div>
+
+  <!-- POST SCREEN (full overlay) -->
+  <div id="screen-post" class="screen" style="position:absolute;inset:0;z-index:200;background:var(--bg)">
+    <div class="post-header safe-top">
+      <button onclick="App.closePost()" style="background:none;border:none;cursor:pointer;padding:4px">
+        <span class="material-icons-round" style="font-size:26px;color:var(--text-secondary)">close</span>
+      </button>
+      <span style="font-size:17px;font-weight:700;color:var(--text-primary)">スポットを投稿</span>
+      <button id="post-submit-btn" class="btn-primary" style="padding:10px 18px;font-size:14px;border-radius:12px" onclick="PostScreen.submit()">投稿</button>
+    </div>
+    <div class="scroll-content">
+      <div class="post-content" id="post-form-content">
+        <!-- filled by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- TERMS SCREEN -->
+  <div id="screen-terms" class="screen" style="position:absolute;inset:0;z-index:300;background:white">
+    <div style="background:white;padding:56px 16px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0">
+      <button onclick="App.closeOverlay('terms')" style="background:none;border:none;cursor:pointer">
+        <span class="material-icons-round" style="font-size:26px;color:var(--primary)">arrow_back</span>
+      </button>
+      <span style="font-size:17px;font-weight:700">利用規約</span>
+    </div>
+    <div class="scroll-content" style="padding:20px">
+      <div id="terms-content"></div>
+    </div>
+  </div>
+
+  <!-- PRIVACY SCREEN -->
+  <div id="screen-privacy" class="screen" style="position:absolute;inset:0;z-index:300;background:white">
+    <div style="background:white;padding:56px 16px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0">
+      <button onclick="App.closeOverlay('privacy')" style="background:none;border:none;cursor:pointer">
+        <span class="material-icons-round" style="font-size:26px;color:var(--primary)">arrow_back</span>
+      </button>
+      <span style="font-size:17px;font-weight:700">プライバシーポリシー</span>
+    </div>
+    <div class="scroll-content" style="padding:20px">
+      <div id="privacy-content"></div>
+    </div>
+  </div>
+
+  <!-- USER PROFILE SCREEN -->
+  <div id="screen-user-profile" class="screen" style="position:absolute;inset:0;z-index:250;background:var(--bg)">
+    <div id="user-profile-content" style="height:100%;overflow-y:auto"></div>
+  </div>
+
+  <!-- Modals/Sheets -->
+  <div class="modal-overlay" id="modal-pref-sheet" onclick="PrefTab.closePrefSheet(event)">
+    <div class="bottom-sheet" id="pref-sheet-content">
+      <div class="sheet-handle"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span style="font-size:17px;font-weight:700">都道府県を選択</span>
+        <div class="chip" style="padding:6px 12px;font-size:11px" onclick="PrefTab.clearPrefAndClose()">すべての都道府県を表示</div>
+      </div>
+      <div id="pref-sheet-body"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-region-sheet" onclick="PrefTab.closeRegionSheet(event)">
+    <div class="bottom-sheet" id="region-sheet-content">
+      <div class="sheet-handle"></div>
+      <div id="region-sheet-body"></div>
+    </div>
+  </div>
+
+  <!-- Alert Dialog -->
+  <div class="alert-overlay" id="alert-overlay">
+    <div class="alert-dialog" id="alert-dialog">
+      <div class="alert-title" id="alert-title"></div>
+      <div class="alert-body" id="alert-body"></div>
+      <div class="alert-actions" id="alert-actions"></div>
+    </div>
+  </div>
+
+  <!-- Snackbar -->
+  <div id="snackbar"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
