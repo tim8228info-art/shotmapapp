@@ -5,21 +5,37 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Google Sign-In service for Firebase Authentication.
 ///
-/// IMPORTANT: Before using this service, ensure the following Firebase Console settings:
-///   1. Go to Firebase Console → Authentication → Sign-in method
-///   2. Enable "Google" as a sign-in provider
-///   3. Set your project support email
-///   4. For iOS: Add your iOS client ID to GoogleService-Info.plist
-///   5. For Android: Add SHA-1/SHA-256 fingerprints in Firebase Console → Project settings
+/// ■ iOS セットアップ（CocoaPods 経由 — SPM 不要）
+///   google_sign_in プラグインが Podfile に GoogleSignIn ~> 8.0 を
+///   自動で追加するため、手動での SPM 追加は不要です。
+///   必要なのは下記 2 点のみです:
 ///
-/// For iOS (Swift Package Manager):
-///   - Add GoogleSignIn-iOS package via Xcode:
-///     File → Add Packages → https://github.com/google/GoogleSignIn-iOS
-///   - Add the reversed client ID to Info.plist URL schemes
+///   1. GoogleService-Info.plist に CLIENT_ID / REVERSED_CLIENT_ID を追加する
+///      → Firebase Console → Authentication → Google を有効化後、
+///        最新の GoogleService-Info.plist をダウンロードして Runner/ に置く
 ///
-/// For Android:
-///   - google-services.json must include oauth_client with client_type 3
-///     (web client ID) for Google Sign-In to work
+///   2. Info.plist の CFBundleURLSchemes に REVERSED_CLIENT_ID を設定する
+///      → すでに $(REVERSED_CLIENT_ID) を参照するよう設定済み。
+///        Xcode の Build Settings → User-Defined に
+///        REVERSED_CLIENT_ID = (GoogleService-Info.plist の値) を追加するだけでOK
+///
+///   3. AppDelegate.swift に GIDSignIn.sharedInstance.handle(url) を追加する
+///      → 実装済み
+///
+/// ■ Android セットアップ
+///   google-services.json に OAuth クライアント (client_type: 3) が含まれている
+///   必要があります。Firebase Console で Google Sign-In を有効化すると
+///   自動的に追加されます。最新の google-services.json を
+///   android/app/ に置き直してください。
+///
+/// ■ アカウント重複ポリシー
+///   Firebase Console の Authentication → Settings →
+///   "Email address uniqueness" を "Prevent creation of multiple accounts with
+///   the same email address" (= One account per email) に設定している場合:
+///   同じメールアドレスで Apple ID と Google の両方でログインしようとすると
+///   `account-exists-with-different-credential` エラーが発生します。
+///   このサービスは、その場合に既存アカウントへ Google クレデンシャルを
+///   自動リンクして一つのアカウントに統合します。
 ///
 class GoogleSignInService {
   static const String _prefKeyGoogleUid = 'google_user_uid';
@@ -27,18 +43,33 @@ class GoogleSignInService {
   static const String _prefKeyGoogleDisplayName = 'google_display_name';
   static const String _prefKeyGooglePhotoUrl = 'google_photo_url';
 
-  /// Perform Google Sign-In with Firebase Authentication.
+  // GoogleSignIn インスタンスをクラスレベルで保持し、
+  // signIn() と signOut() で同一インスタンスを共有する。
+  //
+  // serverClientId: Android の google-services.json に含まれる
+  // ANDROID_CLIENT_ID ではなく、OAuth 2.0 の「ウェブクライアント ID」を指定する。
+  // Firebase Console → Authentication → Sign-in method → Google →
+  // 「ウェブSDK構成」に表示されるクライアントIDを使用する。
+  // iOS は GoogleService-Info.plist の CLIENT_ID が自動的に使用されるため不要。
+  // serverClientId: OAuth 2.0 ウェブクライアント ID（client_type: 3）
+  // google-services.json の oauth_client から取得
+  static final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['email', 'profile'],
+    serverClientId:
+        '123107533000-8q5kiogihgfkrql554mu28a89hher0p5.apps.googleusercontent.com',
+  );
+
+  /// Google Sign-In を実行して FirebaseAuth と連携する。
   ///
-  /// Returns [GoogleSignInResult] with user info on success,
-  /// or an error message on failure.
+  /// 戻り値: [GoogleSignInResult]
+  ///   - success: true  → ログイン成功
+  ///   - isCanceled: true → ユーザーがキャンセル
+  ///   - errorMessage: non-null → エラー詳細
   static Future<GoogleSignInResult> signIn() async {
     try {
-      // Web platform: use signInWithPopup for better UX
       if (kIsWeb) {
         return await _signInWeb();
       }
-
-      // Native (iOS/Android): use GoogleSignIn SDK
       return await _signInNative();
     } catch (e) {
       if (kDebugMode) {
@@ -51,40 +82,32 @@ class GoogleSignInService {
     }
   }
 
-  /// Native Google Sign-In (iOS/Android) with Firebase Auth.
+  // ─────────────────────────────────────────────────────────────
+  // Native (iOS / Android) サインイン
+  // ─────────────────────────────────────────────────────────────
   static Future<GoogleSignInResult> _signInNative() async {
     try {
-      final GoogleSignIn googleSignIn = GoogleSignIn(
-        scopes: ['email', 'profile'],
-      );
+      // Google サインイン画面を表示
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
-      // Trigger the Google Sign-In flow
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-
-      // User canceled the sign-in
+      // ユーザーがキャンセルした場合
       if (googleUser == null) {
-        return GoogleSignInResult(
-          success: false,
-          isCanceled: true,
-        );
+        return GoogleSignInResult(success: false, isCanceled: true);
       }
 
-      // Obtain auth details from the request
+      // Google OAuth トークンを取得
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
 
-      // Create a Firebase credential
+      // Firebase 用クレデンシャルを作成
       final OAuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // Sign in to Firebase with the Google credential
-      // linkWithCredential is NOT used here to avoid complexity;
-      // Firebase automatically handles email-based account linking
-      // when "One account per email address" is enabled in Firebase Console.
+      // Firebase にサインイン（アカウント重複時は自動リンクを試みる）
       final UserCredential userCredential =
-          await FirebaseAuth.instance.signInWithCredential(credential);
+          await _signInWithCredentialHandlingDuplicate(credential);
 
       final User? user = userCredential.user;
       if (user == null) {
@@ -94,7 +117,6 @@ class GoogleSignInService {
         );
       }
 
-      // Cache user info for subsequent app launches
       await _cacheUserInfo(user);
 
       return GoogleSignInResult(
@@ -110,8 +132,6 @@ class GoogleSignInService {
       if (kDebugMode) {
         debugPrint('[GoogleSignIn] Native sign-in error: $e');
       }
-
-      // Check for specific error types
       final errorStr = e.toString().toLowerCase();
       if (errorStr.contains('network') || errorStr.contains('timeout')) {
         return GoogleSignInResult(
@@ -119,7 +139,6 @@ class GoogleSignInService {
           errorMessage: 'ネットワークエラーが発生しました。\n接続を確認してもう一度お試しください。',
         );
       }
-
       return GoogleSignInResult(
         success: false,
         errorMessage: 'Googleサインインに失敗しました。\nもう一度お試しください。',
@@ -127,12 +146,14 @@ class GoogleSignInService {
     }
   }
 
-  /// Web platform Google Sign-In using Firebase Auth signInWithPopup.
+  // ─────────────────────────────────────────────────────────────
+  // Web サインイン (signInWithPopup)
+  // ─────────────────────────────────────────────────────────────
   static Future<GoogleSignInResult> _signInWeb() async {
     try {
-      final GoogleAuthProvider googleProvider = GoogleAuthProvider();
-      googleProvider.addScope('email');
-      googleProvider.addScope('profile');
+      final GoogleAuthProvider googleProvider = GoogleAuthProvider()
+        ..addScope('email')
+        ..addScope('profile');
 
       final UserCredential userCredential =
           await FirebaseAuth.instance.signInWithPopup(googleProvider);
@@ -155,13 +176,9 @@ class GoogleSignInService {
         photoUrl: user.photoURL ?? '',
       );
     } on FirebaseAuthException catch (e) {
-      // Handle popup closed by user
       if (e.code == 'popup-closed-by-user' ||
           e.code == 'cancelled-popup-request') {
-        return GoogleSignInResult(
-          success: false,
-          isCanceled: true,
-        );
+        return GoogleSignInResult(success: false, isCanceled: true);
       }
       return _handleFirebaseAuthError(e);
     } catch (e) {
@@ -175,27 +192,90 @@ class GoogleSignInService {
     }
   }
 
-  /// Handle Firebase Auth specific errors with user-friendly messages.
-  static GoogleSignInResult _handleFirebaseAuthError(
-      FirebaseAuthException e) {
+  // ─────────────────────────────────────────────────────────────
+  // アカウント重複を処理しながら Firebase サインイン
+  //
+  // Firebase の "One account per email" が有効な場合、
+  // 同じメールアドレスで別プロバイダ（Apple ID 等）が既にある状態で
+  // Google サインインすると account-exists-with-different-credential が発生する。
+  //
+  // このメソッドでは:
+  //   1. まず通常の signInWithCredential を試みる
+  //   2. account-exists-with-different-credential の場合:
+  //      - Firebase に既存プロバイダでサインイン済みなら Google クレデンシャルをリンク
+  //      - 未サインインの場合はユーザーに既存方法でのログインを案内するエラーを返す
+  //
+  // 注意: Apple ID 側でのサインインが完了していない（未 Firebase ログイン）状態では
+  //       自動リンクは行えない。ユーザーに「Appleでサインイン」を促すメッセージを出す。
+  // ─────────────────────────────────────────────────────────────
+  static Future<UserCredential> _signInWithCredentialHandlingDuplicate(
+      OAuthCredential googleCredential) async {
+    try {
+      return await FirebaseAuth.instance
+          .signInWithCredential(googleCredential);
+    } on FirebaseAuthException catch (e) {
+      if (e.code != 'account-exists-with-different-credential') {
+        rethrow; // 他のエラーはそのまま上位へ
+      }
+
+      // ── アカウント重複の自動リンク処理 ─────────────────────────────
+      if (kDebugMode) {
+        debugPrint('[GoogleSignIn] account-exists-with-different-credential: '
+            'attempting auto-link. email=${e.email}');
+      }
+
+      // 既に Firebase にサインイン済みのユーザーがいる場合（Apple ID 等でログイン済み）
+      // → Google クレデンシャルをリンクしてアカウントを統合する
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        try {
+          final linked = await currentUser.linkWithCredential(googleCredential);
+          if (kDebugMode) {
+            debugPrint('[GoogleSignIn] Auto-linked Google to existing account: '
+                '${currentUser.uid}');
+          }
+          return linked;
+        } catch (linkError) {
+          if (kDebugMode) {
+            debugPrint('[GoogleSignIn] Auto-link failed: $linkError');
+          }
+          // リンク失敗時は元の重複エラーを再 throw
+          rethrow;
+        }
+      }
+
+      // Firebase 未サインイン状態 → 自動リンク不可。元のエラーを再 throw して
+      // _handleFirebaseAuthError で適切なメッセージを表示する
+      rethrow;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Firebase Auth エラーをユーザー向けメッセージに変換
+  // ─────────────────────────────────────────────────────────────
+  static GoogleSignInResult _handleFirebaseAuthError(FirebaseAuthException e) {
     if (kDebugMode) {
       debugPrint('[GoogleSignIn] FirebaseAuth error: ${e.code} - ${e.message}');
     }
 
-    String errorMessage;
+    final String errorMessage;
     switch (e.code) {
       case 'account-exists-with-different-credential':
-        // This occurs when the same email is used with a different provider.
-        // Guide the user to sign in with the existing provider.
+        // Firebase の "One account per email" が有効な場合に発生する。
+        // 同じメールアドレスで Apple ID が登録済みのケースが最も多い。
         errorMessage =
-            'このメールアドレスは既に別のログイン方法で登録されています。\n'
-            '以前使用したログイン方法でサインインしてください。';
+            'このメールアドレスは既に別のログイン方法（Apple IDなど）で登録されています。\n\n'
+            '「Appleでサインイン」をお試しください。\n'
+            'Appleでサインイン後、次回以降はGoogleでもログインできるようになります。';
         break;
       case 'invalid-credential':
         errorMessage = '認証情報が無効です。もう一度お試しください。';
         break;
       case 'operation-not-allowed':
-        errorMessage = 'Googleサインインが現在無効になっています。\n管理者にお問い合わせください。';
+        // Firebase Console で Google プロバイダが未有効化
+        errorMessage = 'Googleサインインが現在無効になっています。\n'
+            'Firebase Console → Authentication → Sign-in method で\n'
+            'Googleを有効化してください。';
         break;
       case 'user-disabled':
         errorMessage = 'このアカウントは無効化されています。\nサポートにお問い合わせください。';
@@ -206,17 +286,19 @@ class GoogleSignInService {
       case 'too-many-requests':
         errorMessage = 'リクエストが多すぎます。\n少し時間を置いてからお試しください。';
         break;
+      case 'user-not-found':
+        errorMessage = 'アカウントが見つかりません。\n新規登録してください。';
+        break;
       default:
         errorMessage = '認証エラーが発生しました（${e.code}）。\nもう一度お試しください。';
     }
 
-    return GoogleSignInResult(
-      success: false,
-      errorMessage: errorMessage,
-    );
+    return GoogleSignInResult(success: false, errorMessage: errorMessage);
   }
 
-  /// Cache user info in SharedPreferences for subsequent app launches.
+  // ─────────────────────────────────────────────────────────────
+  // ユーザー情報を SharedPreferences にキャッシュ
+  // ─────────────────────────────────────────────────────────────
   static Future<void> _cacheUserInfo(User user) async {
     final prefs = await SharedPreferences.getInstance();
     if (user.uid.isNotEmpty) {
@@ -233,12 +315,13 @@ class GoogleSignInService {
     }
   }
 
-  /// Sign out from both Google and Firebase.
+  // ─────────────────────────────────────────────────────────────
+  // サインアウト (Google + Firebase 両方)
+  // ─────────────────────────────────────────────────────────────
   static Future<void> signOut() async {
     try {
       if (!kIsWeb) {
-        final GoogleSignIn googleSignIn = GoogleSignIn();
-        await googleSignIn.signOut();
+        await _googleSignIn.signOut();
       }
       await FirebaseAuth.instance.signOut();
     } catch (e) {
@@ -248,7 +331,7 @@ class GoogleSignInService {
     }
   }
 
-  /// Clear cached Google user data (used on logout/account deletion).
+  /// キャッシュされた Google ユーザーデータを削除（ログアウト・アカウント削除時）
   static Future<void> clearCache() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_prefKeyGoogleUid);
@@ -257,14 +340,16 @@ class GoogleSignInService {
     await prefs.remove(_prefKeyGooglePhotoUrl);
   }
 
-  /// Check if there is a currently signed-in Firebase user.
+  /// Firebase に現在サインイン済みのユーザーがいるか
   static bool get isSignedIn => FirebaseAuth.instance.currentUser != null;
 
-  /// Get the current Firebase user (null if not signed in).
+  /// 現在の Firebase ユーザー（未サインインなら null）
   static User? get currentUser => FirebaseAuth.instance.currentUser;
 }
 
-/// Result of Google Sign-In attempt.
+// ─────────────────────────────────────────────────────────────
+// Google Sign-In の結果を表すデータクラス
+// ─────────────────────────────────────────────────────────────
 class GoogleSignInResult {
   final bool success;
   final String uid;

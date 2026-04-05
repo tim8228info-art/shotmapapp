@@ -60,6 +60,11 @@ android {
 dependencies {
     // Force Play Billing Library 7.1.1 (Google Play requires >= 6.0.1)
     implementation("com.android.billingclient:billing:7.1.1")
+
+    // ── Google Places SDK for Android ────────────────────────────────────
+    // 検索オートコンプリート・Place Details に使用
+    // Maps SDK for Android は google_maps_flutter_android が自動で導入する
+    implementation("com.google.android.libraries.places:places:4.1.0")
 }
 
 flutter {

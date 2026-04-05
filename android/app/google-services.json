@@ -12,7 +12,20 @@
           "package_name": "com.shotmap.pins"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "123107533000-4q0hiqi04d2adb35rc0iud86qsde8bn7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.shotmap.pins",
+            "certificate_hash": "1ae8e8c5a4d4bfa079e4f3c57be9028536683092"
+          }
+        },
+        {
+          "client_id": "123107533000-8q5kiogihgfkrql554mu28a89hher0p5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD3ivJIWDQkwPHi6rSq9TN-qO3dzWew3iA"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "123107533000-8q5kiogihgfkrql554mu28a89hher0p5.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "123107533000-6q6h6gbvnhbqhm0bfhqcksfa1lev3o3q.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.shotmap.pins"
+              }
+            }
+          ]
         }
       }
     }

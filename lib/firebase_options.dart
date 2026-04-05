@@ -37,7 +37,7 @@ class DefaultFirebaseOptions {
   /// from Firebase Console → Project settings → General → Web apps.
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyD3ivJIWDQkwPHi6rSq9TN-qO3dzWew3iA',
-    appId: '1:123107533000:web:shotmap_web_app_id',
+    appId: '1:123107533000:web:b1ff82cc555c875bba85fd',
     messagingSenderId: '123107533000',
     projectId: 'shotmap-app',
     authDomain: 'shotmap-app.firebaseapp.com',
@@ -63,5 +63,7 @@ class DefaultFirebaseOptions {
     projectId: 'shotmap-app',
     storageBucket: 'shotmap-app.firebasestorage.app',
     iosBundleId: 'com.shotmap.pins',
+    // CLIENT_ID from GoogleService-Info.plist (required for Google Sign-In on iOS)
+    iosClientId: '123107533000-6q6h6gbvnhbqhm0bhfhqcksfa1ev3o3q.apps.googleusercontent.com',
   );
 }

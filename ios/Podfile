@@ -29,6 +29,15 @@ target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
+  # ── Google Maps SDK for iOS ──────────────────────────────────────────────
+  # flutter_map (google_maps_flutter) が依存する GoogleMaps pod を明示指定
+  # バージョンは google_maps_flutter_ios 2.17.x が要求する範囲に合わせる
+  pod 'GoogleMaps', '~> 9.0'
+
+  # ── Google Places SDK for iOS ────────────────────────────────────────────
+  # 検索オートコンプリート・Place Details に使用
+  pod 'GooglePlaces', '~> 9.0'
+
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
     inherit! :search_paths

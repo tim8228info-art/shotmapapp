@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CLIENT_ID</key>
+	<string>123107533000-6q6h6gbvnhbqhm0bhfhqcksfa1ev3o3q.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.123107533000-6q6h6gbvnhbqhm0bhfhqcksfa1ev3o3q</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>123107533000-4q0hlqi04d2adb35rc0lud86qsde8bn7.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
 	<string>AIzaSyDIyFqBLbT9OyONC-kRVHAfs8XgWYz3jlo</string>
 	<key>GCM_SENDER_ID</key>
@@ -15,15 +21,15 @@
 	<key>STORAGE_BUCKET</key>
 	<string>shotmap-app.firebasestorage.app</string>
 	<key>IS_ADS_ENABLED</key>
-	<false></false>
+	<false/>
 	<key>IS_ANALYTICS_ENABLED</key>
-	<false></false>
+	<false/>
 	<key>IS_APPINVITE_ENABLED</key>
-	<true></true>
+	<true/>
 	<key>IS_GCM_ENABLED</key>
-	<true></true>
+	<true/>
 	<key>IS_SIGNIN_ENABLED</key>
-	<true></true>
+	<true/>
 	<key>GOOGLE_APP_ID</key>
 	<string>1:123107533000:ios:1a671bc15cbfd4ffba85fd</string>
 </dict>

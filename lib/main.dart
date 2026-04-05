@@ -34,9 +34,15 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Firebase (required for Google Sign-In / Firebase Auth)
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    // Firebase init may fail on web with placeholder config.
+    // App can still render; Google Sign-In will show an error on attempt.
+    debugPrint('[Firebase] Initialization error: $e');
+  }
 
   // Initialize Hive (local DB for UGC moderation, settings, etc.)
   await Hive.initFlutter();
